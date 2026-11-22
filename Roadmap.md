@@ -1,5 +1,15 @@
 # Personal Tracker V2 – Roadmap (Arbeitsstand)
 
+## M1 – Solo-Tracker, Android + Web, standalone (umgesetzt, Abnahme auf Geräten offen)
+
+- Termine mit Monatskalender, Suche, Wiederholung (täglich/wöchentlich/monatlich/jährlich, Intervall, Ende, einzelne Vorkommen löschen) und Erinnerungen.
+- Markdown-Notizen mit Vorschau und Suche.
+- Haushaltsbuch: Konten (Bargeld, Bank, Depot, Sonstiges), Buchungen gebucht/geplant, Umbuchungen als verknüpfte Gegenbuchungen, monatlich wiederkehrende Posten, optionaler Ausgabenrahmen, Monatsvorschau gebucht/geplant/geschätzt.
+- Lokale Verschlüsselung mit Passwort, Recovery-Schlüssel und (Android) Fingerabdruck; verschlüsselte Sicherung und Wiederherstellung in frischer Installation.
+- Web-App offlinefähig nach dem ersten Laden; keine Anfragen an fremde Server.
+
+Details: [app/README.md](app/README.md).
+
 **Status:** Noch in der fachlichen Ausarbeitung. Diese Datei dokumentiert den ausdrücklich gewünschten Web-App-Baustein, nicht eine freigegebene Reihenfolge von Meilensteinen oder eine bereits gebaute Anwendung. [Projektübersicht](README.md)
 
 ## Web-App als regulärer Client

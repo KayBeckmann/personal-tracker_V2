@@ -1,6 +1,6 @@
 # Personal Tracker V2
 
-**Status: Konzept und Mock-ups – noch keine funktionsfähige App.** Dieses Repository enthält derzeit zwei interaktive HTML-Entwürfe mit Desktop- und Mobilbildern. Es enthält weder Flutter-Quellcode noch ein Backend oder echte Nutzerdaten.
+**Status: Meilenstein M1 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server.** Termine, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code und Bauanleitung: [app/](app/README.md). Ein Backend, Sync, Freigaben oder Vault-Anbindung gibt es noch nicht (folgende Meilensteine).
 
 ## Produktidee
 
