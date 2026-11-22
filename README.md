@@ -1,12 +1,20 @@
 # Personal Tracker V2
 
-**Status: Meilenstein M1 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server.** Termine, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code und Bauanleitung: [app/](app/README.md). Ein Backend, Sync, Freigaben oder Vault-Anbindung gibt es noch nicht (folgende Meilensteine).
+**Status: Meilenstein M1 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server.** Termine, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code und Bauanleitung: [app/](app/README.md). Ein Backend, Sync, Freigaben oder Vault-Anbindung gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
 
 ## Produktidee
 
-Geplant sind eine **Android-App und eine eigenständig nutzbare Web-App auf Flutter-Basis**. Die Web-App ist als regulärer Client für Aufgaben, Einkauf, Vault-Dateien und weitere berechtigte persönliche Bereiche gedacht – nicht nur als Browser-Vorschau oder Adminseite. Beide Clients sollen nach Einrichtung auch ohne Konto und laufenden Server lokal nutzbar bleiben; für Web sind dafür Browser-Speicherung, Backup/Export und Schlüsselhaltung noch zu klären und zu testen. Ein optionaler Sync soll über dasselbe eigene Backend-Protokoll entweder auf einer selbst gehosteten Instanz oder auf einem kostenpflichtig gehosteten Angebot möglich sein. Die voreingestellte Serveroption darf keinen automatischen Upload auslösen. Der Web-App-Baustein ist im [Roadmap-Arbeitsstand](Roadmap.md) festgehalten.
+Geplant sind eine **Android-App und eine eigenständig nutzbare Web-App auf Flutter-Basis**. Die Web-App ist als regulärer Client für Aufgaben, Einkauf, Vault-Dateien und weitere berechtigte persönliche Bereiche gedacht – nicht nur als Browser-Vorschau oder Adminseite. Beide Clients sollen nach Einrichtung auch ohne Konto und laufenden Server lokal nutzbar bleiben; für Web sind dafür Browser-Speicherung, Backup/Export und Schlüsselhaltung noch zu klären und zu testen. Ein optionaler Sync soll über dasselbe eigene Backend-Protokoll entweder auf einer selbst gehosteten Instanz oder auf einem kostenpflichtig gehosteten Angebot möglich sein. Die voreingestellte Serveroption darf keinen automatischen Upload auslösen. Der Web-App-Baustein steht im [Brainstorming](Brainstorming.md); eine Roadmap ist noch nicht ausgearbeitet.
 
 Weitere besprochene Anforderungen sind gezielte private Datei- und Ordnerfreigaben, ein optionaler Abgleich des gesamten Obsidian-Vaults mit Anzeige und berechtigter Bearbeitung in der App, Einkaufslisten mit filial- und regionsbezogenen Preisen sowie eine **separat wählbare** Teilnahme an einem globalen Artikel- und Preiskatalog. Ein konfigurierbarer, auf Nutzerrechte begrenzter API-/MCP-Zugang für LLM-Agenten ist ebenfalls geplant. Datenschutz, Verschlüsselung, Konflikte und konkrete Umsetzung sind noch zu entwerfen; nichts davon ist durch die Mock-ups implementiert.
+
+## Stand M1 (umgesetzt, Abnahme auf Geräten offen)
+
+- Termine mit Monatskalender, Suche, Wiederholung (täglich/wöchentlich/monatlich/jährlich, Intervall, Ende, einzelne Vorkommen löschen) und Erinnerungen.
+- Markdown-Notizen mit Vorschau und Suche.
+- Haushaltsbuch: Konten (Bargeld, Bank, Depot, Sonstiges), Buchungen gebucht/geplant, Umbuchungen als verknüpfte Gegenbuchungen, monatlich wiederkehrende Posten, optionaler Ausgabenrahmen, Monatsvorschau gebucht/geplant/geschätzt.
+- Lokale Verschlüsselung mit Passwort, Recovery-Schlüssel und (Android) Fingerabdruck; verschlüsselte Sicherung und Wiederherstellung in frischer Installation.
+- Web-App offlinefähig nach dem ersten Laden; keine Anfragen an fremde Server.
 
 ## Mock-ups
 
