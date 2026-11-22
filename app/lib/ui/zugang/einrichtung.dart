@@ -137,11 +137,18 @@ class _EinrichtungSeiteState extends ConsumerState<EinrichtungSeite> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(color: f.notizHg, borderRadius: BorderRadius.circular(12)),
-                child: SelectableText(
-                  _vorbereitet!.recovery.anzeigen(),
-                  key: const Key('recovery-anzeige'),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontFamily: 'NotoSansMono', fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: 1.5, height: 1.6),
+                // Eigene Semantik: SelectableText ist für Screenreader sonst stumm.
+                child: Semantics(
+                  label: 'Recovery-Schlüssel ${_vorbereitet!.recovery.anzeigen()}',
+                  container: true,
+                  child: ExcludeSemantics(
+                    child: SelectableText(
+                      _vorbereitet!.recovery.anzeigen(),
+                      key: const Key('recovery-anzeige'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontFamily: 'NotoSansMono', fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: 1.5, height: 1.6),
+                    ),
+                  ),
                 ),
               ),
               Align(
@@ -165,7 +172,7 @@ class _EinrichtungSeiteState extends ConsumerState<EinrichtungSeite> {
                 key: const Key('rk-kontrolle'),
                 controller: _kontrolle,
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(labelText: 'Zur Kontrolle: die letzten vier Zeichen'),
+                decoration: const InputDecoration(labelText: 'Kontrolle: letzte 4 Zeichen'),
                 onSubmitted: (_) => _abschliessen(),
               ),
               if (_fehler != null) Fehlertext(_fehler!),

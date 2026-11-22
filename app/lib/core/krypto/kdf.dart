@@ -10,7 +10,7 @@ import 'krypto.dart';
 /// Schlüsselableitung aus dem App-Passwort. Das Verfahren steht im
 /// Schlüsselbund, damit eine Installation es beim Entsperren wiederfindet.
 ///
-/// - Android: Argon2id (speicherhart). Gemessen braucht die reine
+/// - Android: Argon2id (speicherhart, OWASP: 19 MiB, t=2). Gemessen braucht die reine
 ///   Dart-Umsetzung im Browser ~18 s — dort daher
 /// - Web: PBKDF2-SHA256 über WebCrypto (nativ im Browser) mit 600.000
 ///   Iterationen (OWASP-Empfehlung 2023).
@@ -22,7 +22,7 @@ class KdfParameter {
     this.speicherKiB = 0,
   });
 
-  factory KdfParameter.argon2id({int speicherKiB = 1 << 15, int iterationen = 3, Uint8List? salz}) =>
+  factory KdfParameter.argon2id({int speicherKiB = 19456, int iterationen = 2, Uint8List? salz}) =>
       KdfParameter._(verfahren: verfahrenArgon2id, salz: salz ?? zufall(16), iterationen: iterationen, speicherKiB: speicherKiB);
 
   factory KdfParameter.pbkdf2({int iterationen = 600000, Uint8List? salz}) =>

@@ -17,7 +17,8 @@ val hasReleaseKey = keystoreProperties.getProperty("storeFile") != null
 
 android {
     namespace = "de.kaybeckmann.personal_tracker"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_local_notifications und androidx.core verlangen API 37.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
