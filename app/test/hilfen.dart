@@ -9,10 +9,12 @@ import 'package:personal_tracker/core/krypto/schluesselbund.dart';
 import 'package:personal_tracker/core/modell/bestand.dart';
 import 'package:personal_tracker/core/sitzung.dart';
 import 'package:personal_tracker/core/speicher/ablage.dart';
+import 'package:personal_tracker/ui/dateien.dart';
 import 'package:sembast/sembast_memory.dart';
 
-/// Schnelle Ableitung nur für Tests.
-KdfParameter testKdf() => KdfParameter.argon2id(speicherKiB: 64, iterationen: 1);
+/// Schnelle Ableitung nur für Tests (synchron, ohne Isolate — passt auch
+/// in Widget-Tests).
+KdfParameter testKdf() => KdfParameter.pbkdf2(iterationen: 1000);
 
 class FakeBiometrie implements Biometrie {
   Uint8List? gespeichert;
@@ -42,6 +44,22 @@ class FakeErinnerungen implements ErinnerungsDienst {
   Future<void> beenden() async => beendet++;
 }
 
+/// Dateiablage im Speicher: „gespeicherte“ Sicherungen und eine Datei,
+/// die beim Öffnen gewählt wird.
+class FakeDateien implements Dateien {
+  final gespeichert = <String, Uint8List>{};
+  ({String name, Uint8List bytes})? zumOeffnen;
+
+  @override
+  Future<bool> speichern(String name, Uint8List bytes) async {
+    gespeichert[name] = bytes;
+    return true;
+  }
+
+  @override
+  Future<({String name, Uint8List bytes})?> oeffnen() async => zumOeffnen;
+}
+
 /// Simuliert eine Installation: gleiche Fabrik + Name = gleiches Gerät.
 class TestGeraet {
   TestGeraet({DatabaseFactory? fabrik, this.name = 'test.db'}) : fabrik = fabrik ?? newDatabaseFactoryMemory();
@@ -50,6 +68,7 @@ class TestGeraet {
   final String name;
   final biometrie = FakeBiometrie();
   final erinnerungen = FakeErinnerungen();
+  final dateien = FakeDateien();
   DateTime jetzt = DateTime(2026, 11, 22, 10);
 
   /// „App-Start“: Ablage öffnen, Schlüsselbund lesen, Container bauen.
@@ -68,5 +87,6 @@ class TestGeraet {
         erinnerungenProvider.overrideWithValue(erinnerungen),
         kdfProvider.overrideWithValue(testKdf),
         uhrProvider.overrideWithValue(() => jetzt),
+        dateienProvider.overrideWithValue(dateien),
       ];
 }

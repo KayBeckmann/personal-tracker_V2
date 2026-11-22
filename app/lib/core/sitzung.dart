@@ -180,7 +180,7 @@ class SitzungNotifier extends Notifier<Sitzung> {
 
   Future<void> neuesPasswort(String passwort) async {
     final s = _offen;
-    final bund = await s.bund.mitNeuemPasswort(s.dek, passwort);
+    final bund = await s.bund.mitNeuemPasswort(s.dek, passwort, kdf: ref.read(kdfProvider)());
     await _ablage.setzeMeta(metaBund, bund.toJson());
     state = s.mit(bund: bund, neuesPasswortNoetig: false);
   }

@@ -88,8 +88,8 @@ class Schluesselbund {
   Uint8List? backupSchluessel(Uint8List dek) => AesGcm.entschluesseln(dek, huelleBackup, aad: _aadBackup);
 
   /// Neues Passwort für denselben DEK (Daten bleiben unverändert).
-  Future<Schluesselbund> mitNeuemPasswort(Uint8List dek, String passwort) async {
-    final k = KdfParameter.standard();
+  Future<Schluesselbund> mitNeuemPasswort(Uint8List dek, String passwort, {KdfParameter? kdf}) async {
+    final k = kdf ?? KdfParameter.standard();
     final kek = await k.ableiten(passwort);
     return _kopie(kdf: k, huellePasswort: AesGcm.verschluesseln(kek, dek, aad: _aadPasswort));
   }

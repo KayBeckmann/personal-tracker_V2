@@ -1,12 +1,12 @@
 {
-    "name": "personal_tracker",
-    "short_name": "personal_tracker",
+    "name": "Personal Tracker",
+    "short_name": "Tracker",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#FBFCF8",
+    "theme_color": "#286A53",
+    "description": "Termine, Notizen und Haushaltsbuch – verschlüsselt auf diesem Gerät, auch offline.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {
@@ -31,5 +31,6 @@
             "type": "image/png",
             "purpose": "maskable"
         }
-    ]
+    ],
+    "lang": "de"
 }

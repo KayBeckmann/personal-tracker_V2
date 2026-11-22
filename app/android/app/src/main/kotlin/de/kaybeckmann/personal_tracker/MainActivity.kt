@@ -1,5 +1,6 @@
 package de.kaybeckmann.personal_tracker
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// FragmentActivity: nötig für den System-Dialog beim Entsperren per Fingerabdruck.
+class MainActivity : FlutterFragmentActivity()
