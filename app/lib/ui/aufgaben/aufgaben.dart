@@ -215,7 +215,7 @@ Future<void> aufgabeAbhaken(BuildContext context, WidgetRef ref, Aufgabe a) asyn
   final naechste = neu != null && neu.offen ? neu.faellig : null;
   messenger?.hideCurrentSnackBar();
   messenger?.showSnackBar(SnackBar(
-    content: Text(naechste == null ? '„${a.titel}“ erledigt.' : '„${a.titel}“ erledigt · nächste Runde ${datumMittel(naechste)}.'),
+    content: Text(naechste == null ? '„${a.titel}“ erledigt.' : '„${a.titel}“ erledigt · nächste Runde ${datumMittel(naechste)}'),
     action: SnackBarAction(label: 'Rückgängig', onPressed: () => s.speichereAufgabe(vorher)),
     // Mit Aktion bliebe die Leiste sonst stehen und verdeckte die Liste.
     persist: false,

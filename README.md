@@ -1,6 +1,6 @@
 # Personal Tracker V2
 
-**Status: Meilenstein M1 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server.** Termine, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code und Bauanleitung: [app/](app/README.md). Ein Backend, Sync, Freigaben oder Vault-Anbindung gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
+**Status: Meilensteine M1 und M2 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code und Bauanleitung: [app/](app/README.md). Ein Backend, Sync, Freigaben oder Vault-Anbindung gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
 
 ## Produktidee
 
@@ -15,6 +15,13 @@ Weitere besprochene Anforderungen sind gezielte private Datei- und Ordnerfreigab
 - Haushaltsbuch: Konten (Bargeld, Bank, Depot, Sonstiges), Buchungen gebucht/geplant, Umbuchungen als verknüpfte Gegenbuchungen, monatlich wiederkehrende Posten, optionaler Ausgabenrahmen, Monatsvorschau gebucht/geplant/geschätzt.
 - Lokale Verschlüsselung mit Passwort, Recovery-Schlüssel und (Android) Fingerabdruck; verschlüsselte Sicherung und Wiederherstellung in frischer Installation.
 - Web-App offlinefähig nach dem ersten Laden; keine Anfragen an fremde Server.
+
+## Stand M2 (umgesetzt, Abnahme auf Geräten offen)
+
+- Aufgaben mit Fälligkeit (oder ohne Datum), drei Wichtigkeitsstufen, optionaler Erinnerungs-Uhrzeit und Wiederholung nach dem Abhaken (verpasste Runden werden nicht nachgeholt; monatlich am 31. fällt auf den Monatsletzten).
+- Aufgabenliste nach Überfällig, Heute, Nächste 7 Tage, Später, Ohne Datum; Suche; Erledigte einblendbar und wieder zu öffnen; Abhaken mit Rückgängig.
+- Übersicht: Überfälliges als eigener Block, „Heute“ und „Diese Woche“ zeigen je höchstens zwei Aufgaben ohne Dublette (Woche: normal/hoch in den nächsten 7 Tagen und hohe ohne Datum). Aufgaben werden nie automatisch zu Terminen.
+- Datenschema 2: vorhandene M1-Daten und M1-Sicherungen werden beim Update übernommen; eine M1-App lehnt M2-Sicherungen ab, statt Aufgaben still zu verlieren.
 
 ## Mock-ups
 

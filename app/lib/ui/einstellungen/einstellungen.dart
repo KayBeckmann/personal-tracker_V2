@@ -266,8 +266,9 @@ class _EinstellungenSeiteState extends ConsumerState<EinstellungenSeite> {
                   SwitchListTile(
                     key: const Key('erinnerung-titel'),
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Termintitel in Benachrichtigungen'),
-                    subtitle: const Text('Aus: nur „Termin · Heute um 14:00“ — der Titel steht dann weder im Sperrbildschirm noch im Systemspeicher.'),
+                    title: const Text('Titel in Benachrichtigungen'),
+                    subtitle: const Text('Aus: nur „Termin · Heute um 14:00“ bzw. „Aufgabe · Heute fällig“ — der Titel steht dann weder im '
+                        'Sperrbildschirm noch im Systemspeicher.'),
                     value: b.einstellungen.erinnerungMitTitel,
                     onChanged: (v) => ref.read(sitzungProvider.notifier).speichereEinstellungen(b.einstellungen.kopie(erinnerungMitTitel: v)),
                   ),
