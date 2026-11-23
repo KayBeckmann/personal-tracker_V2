@@ -1,3 +1,4 @@
+import '../modell/aufgabe.dart';
 import '../modell/bestand.dart';
 import '../modell/finanzen.dart';
 import '../modell/notiz.dart';
@@ -7,6 +8,7 @@ import 'schema.dart';
 
 Rohdaten rohdatenVon(Bestand b) => {
       'termine': [for (final t in b.termine.values) t.toJson()],
+      'aufgaben': [for (final a in b.aufgaben.values) a.toJson()],
       'notizen': [for (final n in b.notizen.values) n.toJson()],
       'konten': [for (final k in b.konten.values) k.toJson()],
       'buchungen': [for (final x in b.buchungen.values) x.toJson()],
@@ -39,6 +41,7 @@ Bestand bestandAus(Rohdaten d) {
   final einst = d['einstellungen'] ?? const [];
   return Bestand(
     termine: bereich('termine', Termin.fromJson, (t) => t.id),
+    aufgaben: bereich('aufgaben', Aufgabe.fromJson, (a) => a.id),
     notizen: bereich('notizen', Notiz.fromJson, (n) => n.id),
     konten: konten,
     buchungen: buchungen,

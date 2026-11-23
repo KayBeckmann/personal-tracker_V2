@@ -1,7 +1,10 @@
 /// Schemaversion der Klartext-Datensätze. Bei jeder Änderung am
 /// Datenformat erhöhen und eine Migration ergänzen; ältere Backups und
 /// lokale Bestände werden damit beim Öffnen bzw. Einlesen angehoben.
-const aktuellesSchema = 1;
+///
+/// - 1: M1 (Termine, Notizen, Haushaltsbuch)
+/// - 2: M2 (zusätzlich Aufgaben)
+const aktuellesSchema = 2;
 
 /// Rohdaten: Bereich → Datensätze (Klartext-JSON).
 typedef Rohdaten = Map<String, List<Map<String, dynamic>>>;
@@ -9,8 +12,12 @@ typedef Rohdaten = Map<String, List<Map<String, dynamic>>>;
 /// Migration von Version `n` auf `n + 1`.
 typedef Migration = Rohdaten Function(Rohdaten daten);
 
-/// Bisher keine — Schema 1 ist das erste Format.
-const Map<int, Migration> migrationen = {};
+const Map<int, Migration> migrationen = {1: _v1zuV2};
+
+/// Schema 2 ergänzt nur den Bereich „aufgaben“; vorhandene Datensätze
+/// bleiben unverändert. Die Versionsnummer steigt trotzdem, damit eine
+/// M1-App eine M2-Sicherung ablehnt, statt Aufgaben still zu verlieren.
+Rohdaten _v1zuV2(Rohdaten d) => {...d, 'aufgaben': d['aufgaben'] ?? []};
 
 class SchemaFehler implements Exception {
   SchemaFehler(this.meldung);

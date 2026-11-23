@@ -2,12 +2,14 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:personal_tracker/core/krypto/recovery_schluessel.dart';
+import 'package:personal_tracker/core/modell/aufgabe.dart';
 import 'package:personal_tracker/core/modell/datum.dart';
 import 'package:personal_tracker/core/modell/finanzen.dart';
 import 'package:personal_tracker/core/modell/notiz.dart';
 import 'package:personal_tracker/core/modell/termin.dart';
 import 'package:personal_tracker/core/sitzung.dart';
 import 'package:personal_tracker/core/speicher/backup.dart';
+import 'package:personal_tracker/core/speicher/schema.dart';
 import 'package:sembast/sembast.dart';
 
 import '../hilfen.dart';
@@ -41,6 +43,15 @@ Future<RecoverySchluessel> einrichtenMitDaten(SitzungNotifier s) async {
   ));
   await s.umbuchen(vonKonto: 'giro', nachKonto: 'bar', betragCent: 5000, datum: DateTime(2026, 11, 6));
   await s.speicherePlan(Plan(id: 'p1', kontoId: 'giro', empfaenger: 'Miete', betragCent: -85000, tag: 1, ab: monatVon(DateTime(2026, 11)), geaendert: t));
+  await s.speichereAufgabe(Aufgabe(
+    id: 'a1',
+    titel: 'Mülltonne raus',
+    faellig: DateTime(2026, 11, 23),
+    erinnerungUm: 19 * 60,
+    prioritaet: Prioritaet.hoch,
+    wiederholung: const Wiederholung(Rhythmus.woechentlich),
+    geaendert: t,
+  ));
   return v.recovery;
 }
 
@@ -57,10 +68,10 @@ void main() {
 
     // Rohdaten der Datenbank: kein Klartext.
     final dump = jsonEncode([
-      for (final store in ['termine', 'notizen', 'konten', 'buchungen', 'plaene'])
+      for (final store in ['termine', 'aufgaben', 'notizen', 'konten', 'buchungen', 'plaene'])
         for (final rec in await StoreRef<String, Object?>(store).find(ablage.db)) rec.value,
     ]);
-    for (final wort in ['Zahnarzt', 'Hochbeet', 'Bäckerei', 'Portemonnaie', 'Miete', '85000']) {
+    for (final wort in ['Zahnarzt', 'Mülltonne', 'Hochbeet', 'Bäckerei', 'Portemonnaie', 'Miete', '85000']) {
       expect(dump, isNot(contains(wort)));
     }
 
@@ -118,6 +129,7 @@ void main() {
     expect(b2.saldoCent('giro'), b1.saldoCent('giro'));
     expect(b2.saldoCent('bar'), b1.saldoCent('bar'));
     expect(b2.plaene.keys, ['p1']);
+    expect(jsonEncode(b2.aufgaben['a1']!.toJson()), jsonEncode(b1.aufgaben['a1']!.toJson()));
 
     // Neustart des neuen Geräts: neues Passwort gilt, Recovery bleibt derselbe.
     c2.dispose();
@@ -174,6 +186,45 @@ void main() {
     expect(c.read(bestandProvider).buchungen.values.where((x) => x.istUmbuchung), isEmpty);
     expect(s.kontoLoeschbar('bar'), isTrue);
     expect(s.kontoLoeschbar('giro'), isFalse);
+  });
+
+  test('Aufgabe abhaken, rückgängig machen, löschen', () async {
+    final g = TestGeraet()..jetzt = DateTime(2026, 11, 23, 20);
+    final (c, _) = await g.starten();
+    final s = c.read(sitzungProvider.notifier);
+    await einrichtenMitDaten(s);
+    final vorher = await s.aufgabeAbschliessen('a1');
+    var a = c.read(bestandProvider).aufgaben['a1']!;
+    expect(a.faellig, DateTime(2026, 11, 30));
+    expect(a.verlauf, hasLength(1));
+    expect(g.erinnerungen.geplant.last.aufgaben['a1']!.faellig, DateTime(2026, 11, 30), reason: 'Erinnerung neu geplant');
+    await s.speichereAufgabe(vorher!);
+    a = c.read(bestandProvider).aufgaben['a1']!;
+    expect(a.faellig, DateTime(2026, 11, 23));
+    expect(a.verlauf, isEmpty);
+    await s.loescheAufgabe('a1');
+    expect(c.read(bestandProvider).aufgaben, isEmpty);
+  });
+
+  test('Update: lokaler M1-Bestand (Schema 1) wird beim Entsperren angehoben', () async {
+    final g = TestGeraet();
+    var (c, ablage) = await g.starten();
+    final s = c.read(sitzungProvider.notifier);
+    await einrichtenMitDaten(s);
+    await s.loescheAufgabe('a1');
+    await ablage.setzeMeta(SitzungNotifier.metaSchema, 1);
+    c.dispose();
+    await ablage.schliessen();
+
+    (c, ablage) = await g.starten();
+    expect(await c.read(sitzungProvider.notifier).entsperren('passwort-1'), isTrue);
+    expect(await ablage.meta(SitzungNotifier.metaSchema), aktuellesSchema);
+    final b = c.read(bestandProvider);
+    expect(b.notizen['n1']!.text, '# Ideen\n- Hochbeet');
+    expect(b.saldoCent('bar'), 5000);
+    expect(b.aufgaben, isEmpty);
+    await c.read(sitzungProvider.notifier).speichereAufgabe(Aufgabe(id: 'neu', titel: 'Nach Update', geaendert: DateTime.utc(2026)));
+    expect(c.read(bestandProvider).aufgaben.keys, ['neu']);
   });
 
   test('Zurücksetzen löscht alles', () async {

@@ -30,9 +30,10 @@ class Backup {
     required Uint8List backupSchluessel,
     required String recoveryKennung,
     DateTime? zeitpunkt,
+    int schema = aktuellesSchema,
   }) {
     final erstellt = (zeitpunkt ?? DateTime.now()).toUtc().toIso8601String();
-    final inhalt = utf8.encode(jsonEncode({'schema': aktuellesSchema, 'daten': daten}));
+    final inhalt = utf8.encode(jsonEncode({'schema': schema, 'daten': daten}));
     final g = AesGcm.verschluesseln(
       backupSchluessel,
       Uint8List.fromList(inhalt),
