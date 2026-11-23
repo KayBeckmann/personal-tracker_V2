@@ -1,7 +1,8 @@
 # Personal Tracker V2 – App (Flutter, Android + Web)
 
-Stand **M1**: Solo-Tracker, dauerhaft ohne Konto, Server oder Internet nutzbar.
-Termine (mit Wiederholung und Erinnerung), Markdown-Notizen und Haushaltsbuch
+Stand **M2**: Solo-Tracker, dauerhaft ohne Konto, Server oder Internet nutzbar.
+Termine (mit Wiederholung und Erinnerung), Aufgaben (Fälligkeit, Wichtigkeit,
+Wiederholung nach dem Abhaken, Erinnerung), Markdown-Notizen und Haushaltsbuch
 (Konten, Buchungen, Umbuchungen, wiederkehrende Posten, Monatsvorschau).
 Layout nach Mock-up „Ruhiger Tagesblick“, hell und dunkel.
 
@@ -25,7 +26,11 @@ flutter build apk --release --split-per-abi   # braucht android/key.properties
 
 - **Web:** CanvasKit und Schriften liegen im Build (`--no-web-resources-cdn`),
   die App lädt nichts von fremden Servern. `offline_sw.js` cacht beim ersten
-  Laden alle Dateien; danach startet die App auch ohne Netz.
+  Laden alle Dateien; danach startet die App auch ohne Netz. Nach einem
+  Update lädt der erste Aufruf noch die alte Fassung und holt im Hintergrund
+  die neue; ab dem zweiten Aufruf läuft die neue. Beim Hochladen müssen die
+  Dateien ein neueres Änderungsdatum bekommen (sonst meldet ein Server mit
+  `If-Modified-Since` „unverändert“ und der Browser sieht kein Update).
 - **Android:** Die Release-Signatur kommt aus `android/key.properties` (git-ignoriert,
   gleiches Schema wie bei WerkkernERP). Ohne die Datei bricht der Release-Build ab.
   Die App hat **keine INTERNET-Berechtigung**.
@@ -39,16 +44,16 @@ flutter build apk --release --split-per-abi   # braucht android/key.properties
 | Fingerabdruck | Android: DEK zusätzlich im Keystore, an starke Biometrie gebunden |
 | Sperre | Beim Start, per Knopf und nach 5 Min im Hintergrund; offene Seiten werden geschlossen |
 | Sicherung | `.ptbackup`: JSON-Kopf (als AAD gebunden) + AES-GCM-Inhalt mit Schlüssel aus dem Recovery-Schlüssel; Einlesen mit Vorschau, in frischer oder laufender Installation |
-| Erinnerungen | Android: im System geplant (30 Tage, max. 60), ohne Termintitel, sofern nicht eingestellt. Web: nur bei geöffneter App |
-| Schema | `lib/core/speicher/schema.dart`: Version + Migrationen; neuere Stände werden abgelehnt, Migration in einer Transaktion |
+| Erinnerungen | Termine und Aufgaben. Android: im System geplant (30 Tage, max. 60), ohne Titel, sofern nicht eingestellt. Web: nur bei geöffneter App |
+| Schema | `lib/core/speicher/schema.dart`: Version + Migrationen (1 = M1, 2 = M2 mit Aufgaben); neuere Stände werden abgelehnt, Migration in einer Transaktion |
 
 Unverschlüsselt liegen nur Schlüsselbund, Schemaversion und Farbschema.
 
 ## Aufbau
 
 ```
-lib/core/   krypto/ speicher/ modell/ kalender/ finanzen/ dienste/ sitzung.dart
-lib/ui/     zugang/ uebersicht/ termine/ notizen/ finanzen/ einstellungen/ shell.dart thema.dart
+lib/core/   krypto/ speicher/ modell/ kalender/ aufgaben/ finanzen/ dienste/ sitzung.dart
+lib/ui/     zugang/ uebersicht/ termine/ aufgaben/ notizen/ finanzen/ einstellungen/ shell.dart thema.dart
 ```
 
 Haushaltsbuch-Vorschau (`core/finanzen/prognose.dart`): erwartet bis Monatsende =
@@ -56,3 +61,9 @@ offene geplante Ausgaben + max(0, Ø variable Ausgaben der bis zu 3 letzten
 abgeschlossenen Monate − bereits gebuchte variable Ausgaben). Ohne
 abgeschlossenen Monat gibt es keine Schätzung. Umbuchungen zählen nie, Einnahmen
 stehen getrennt, der Ausgabenrahmen ist ein eigener Wert.
+
+Aufgaben-Auswahl (`core/aufgaben/auswahl.dart`): Überfällig = offen und vor
+heute fällig (eigener Block). Heute = bis zu zwei heute fällige, wichtigste
+zuerst. Diese Woche = bis zu zwei aus „in den nächsten 7 Tagen fällig, normal
+oder hoch“ plus „hoch ohne Datum“, hohe zuerst. Niedrige erscheinen nur in der
+Liste; keine Aufgabe erscheint zweimal.

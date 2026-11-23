@@ -15,7 +15,7 @@ class Ablage {
   final Database db;
 
   static const dateiname = 'personal_tracker_v2.db';
-  static const bereiche = ['termine', 'notizen', 'konten', 'buchungen', 'plaene', 'einstellungen'];
+  static const bereiche = ['termine', 'aufgaben', 'notizen', 'konten', 'buchungen', 'plaene', 'einstellungen'];
 
   static final _meta = StoreRef<String, Object?>('meta');
 

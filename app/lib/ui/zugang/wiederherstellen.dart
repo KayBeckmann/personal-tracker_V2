@@ -94,7 +94,7 @@ class _WiederherstellenAblaufState extends ConsumerState<WiederherstellenAblauf>
       final ok = await bestaetigen(
         context,
         titel: 'Alle Daten ersetzen?',
-        text: 'Termine, Notizen und Haushaltsbuch auf diesem Gerät werden durch die Sicherung vom '
+        text: 'Termine, Aufgaben, Notizen und Haushaltsbuch auf diesem Gerät werden durch die Sicherung vom '
             '${datumKurz(g.inhalt.kopf.erstellt.toLocal())} ersetzt. Das lässt sich nicht rückgängig machen. '
             'Dein Passwort bleibt; künftig gilt der Recovery-Schlüssel dieser Sicherung.',
         ja: 'Ersetzen',
@@ -158,6 +158,7 @@ class _WiederherstellenAblaufState extends ConsumerState<WiederherstellenAblauf>
               children: [
                 for (final (name, anzahl) in [
                   ('Termine', g.bestand.termine.length),
+                  ('Aufgaben', g.bestand.aufgaben.length),
                   ('Notizen', g.bestand.notizen.length),
                   ('Konten', g.bestand.konten.length),
                   ('Buchungen', g.bestand.buchungen.length),

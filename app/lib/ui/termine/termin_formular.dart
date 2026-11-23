@@ -209,6 +209,7 @@ class _TerminFormularState extends ConsumerState<_TerminFormular> {
                 Expanded(
                   child: DropdownButtonFormField<Rhythmus?>(
                     key: const Key('termin-wiederholung'),
+                    isExpanded: true,
                     initialValue: _rhythmus,
                     decoration: const InputDecoration(labelText: 'Wiederholung'),
                     items: [

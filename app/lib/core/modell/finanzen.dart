@@ -256,7 +256,7 @@ class Einstellungen {
   /// berechneten Prognose.
   final int? ausgabenrahmenCent;
 
-  /// Termintitel in Benachrichtigungen zeigen (Standard: nein, damit
+  /// Termin- und Aufgabentitel in Benachrichtigungen zeigen (Standard: nein, damit
   /// nichts im Sperrbildschirm oder im Planungsspeicher des Systems steht).
   final bool erinnerungMitTitel;
   final DateTime? letzteSicherung;

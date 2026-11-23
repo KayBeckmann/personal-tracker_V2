@@ -6,6 +6,7 @@ import '../core/sitzung.dart';
 enum Bereich {
   uebersicht('Übersicht', Icons.radio_button_checked),
   termine('Termine', Icons.calendar_today_outlined),
+  aufgaben('Aufgaben', Icons.task_alt),
   notizen('Notizen', Icons.notes_outlined),
   finanzen('Haushaltsbuch', Icons.account_balance_wallet_outlined),
   einstellungen('Speicher & Sicherheit', Icons.lock_outline);

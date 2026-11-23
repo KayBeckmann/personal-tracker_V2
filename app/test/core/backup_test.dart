@@ -45,13 +45,23 @@ void main() {
     expect(() => Backup.kopfLesen(neuer), throwsA(isA<BackupFehler>().having((e) => e.meldung, 'meldung', contains('neueren'))));
   });
 
+  test('M1-Sicherung (Schema 1) bleibt lesbar und bekommt leere Aufgaben', () {
+    final m1 = Backup.erstellen(daten: daten, backupSchluessel: r.backupSchluessel, recoveryKennung: r.kennung, schema: 1);
+    final inhalt = Backup.lesen(m1, r);
+    expect(inhalt.schema, 1);
+    expect(inhalt.daten['notizen'], daten['notizen']);
+    expect(inhalt.daten['aufgaben'], isEmpty);
+  });
+
   test('Migration: ältere Schemata werden angehoben, neuere abgelehnt', () {
     Rohdaten v0zuV1(Rohdaten d) => {
           for (final e in d.entries) e.key: [for (final x in e.value) {...x, 'migriert': true}],
         };
     final m = migrieren(daten, 0, schritte: {0: v0zuV1}, ziel: 1);
     expect(m['notizen']!.single['migriert'], isTrue);
-    expect(() => migrieren(daten, 2), throwsA(isA<SchemaFehler>()));
+    expect(() => migrieren(daten, aktuellesSchema + 1), throwsA(isA<SchemaFehler>()));
+    // So verhält sich eine M1-App (Schema 1) vor einer M2-Sicherung.
+    expect(() => migrieren(daten, 2, ziel: 1), throwsA(isA<SchemaFehler>()));
     expect(() => migrieren(daten, 0, schritte: const {}, ziel: 1), throwsA(isA<SchemaFehler>()));
   });
 }

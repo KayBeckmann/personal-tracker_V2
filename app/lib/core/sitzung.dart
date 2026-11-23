@@ -9,6 +9,7 @@ import 'dienste/erinnerungen.dart';
 import 'krypto/kdf.dart';
 import 'krypto/recovery_schluessel.dart';
 import 'krypto/schluesselbund.dart';
+import 'modell/aufgabe.dart';
 import 'modell/bestand.dart';
 import 'modell/datum.dart';
 import 'modell/finanzen.dart';
@@ -255,6 +256,25 @@ class SitzungNotifier extends Notifier<Sitzung> {
   /// Nur dieses Vorkommen einer Serie entfernen.
   Future<void> loescheVorkommen(Termin t, DateTime tag) =>
       speichereTermin(t.kopie(ausnahmen: {...t.ausnahmen, tagIso(tag)}));
+
+  Future<void> speichereAufgabe(Aufgabe a) async {
+    final x = a.kopie(geaendert: _jetzt.toUtc());
+    await _schreiben('aufgaben', x.id, x.toJson(), _b.kopie(aufgaben: {..._b.aufgaben, x.id: x}));
+    unawaited(_erinnerungenPlanen());
+  }
+
+  Future<void> loescheAufgabe(String id) async {
+    await _loeschen('aufgaben', [id], _b.kopie(aufgaben: {..._b.aufgaben}..remove(id)));
+    unawaited(_erinnerungenPlanen());
+  }
+
+  /// Abhaken; liefert den vorigen Stand für „Rückgängig“.
+  Future<Aufgabe?> aufgabeAbschliessen(String id) async {
+    final a = _b.aufgaben[id];
+    if (a == null || !a.offen) return null;
+    await speichereAufgabe(a.abschliessen(_jetzt));
+    return a;
+  }
 
   Future<void> speichereNotiz(Notiz n) async {
     final x = n.kopie(geaendert: _jetzt.toUtc());

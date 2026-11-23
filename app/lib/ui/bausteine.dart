@@ -67,6 +67,7 @@ class Karte extends StatelessWidget {
     super.key,
     this.titel,
     this.marke,
+    this.markeWarnung = false,
     this.aktion,
     required this.child,
     this.innen = const EdgeInsets.all(22),
@@ -74,6 +75,7 @@ class Karte extends StatelessWidget {
 
   final String? titel;
   final String? marke;
+  final bool markeWarnung;
   final Widget? aktion;
   final Widget child;
   final EdgeInsets innen;
@@ -106,7 +108,7 @@ class Karte extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(child: Text(titel!, style: Theme.of(context).textTheme.titleMedium)),
-                      if (marke != null) ...[const SizedBox(width: 8), Marke(marke!)],
+                      if (marke != null) ...[const SizedBox(width: 8), Marke(marke!, warnung: markeWarnung)],
                     ],
                   ),
                   ?aktion,

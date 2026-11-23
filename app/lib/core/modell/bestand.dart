@@ -1,3 +1,4 @@
+import 'aufgabe.dart';
 import 'finanzen.dart';
 import 'notiz.dart';
 import 'termin.dart';
@@ -6,6 +7,7 @@ import 'termin.dart';
 class Bestand {
   const Bestand({
     this.termine = const {},
+    this.aufgaben = const {},
     this.notizen = const {},
     this.konten = const {},
     this.buchungen = const {},
@@ -14,6 +16,7 @@ class Bestand {
   });
 
   final Map<String, Termin> termine;
+  final Map<String, Aufgabe> aufgaben;
   final Map<String, Notiz> notizen;
   final Map<String, Konto> konten;
   final Map<String, Buchung> buchungen;
@@ -22,6 +25,7 @@ class Bestand {
 
   Bestand kopie({
     Map<String, Termin>? termine,
+    Map<String, Aufgabe>? aufgaben,
     Map<String, Notiz>? notizen,
     Map<String, Konto>? konten,
     Map<String, Buchung>? buchungen,
@@ -30,6 +34,7 @@ class Bestand {
   }) =>
       Bestand(
         termine: termine ?? this.termine,
+        aufgaben: aufgaben ?? this.aufgaben,
         notizen: notizen ?? this.notizen,
         konten: konten ?? this.konten,
         buchungen: buchungen ?? this.buchungen,
@@ -61,5 +66,6 @@ class Bestand {
       return art != 0 ? art : a.name.toLowerCase().compareTo(b.name.toLowerCase());
     });
 
-  int get anzahlDatensaetze => termine.length + notizen.length + konten.length + buchungen.length + plaene.length;
+  int get anzahlDatensaetze =>
+      termine.length + aufgaben.length + notizen.length + konten.length + buchungen.length + plaene.length;
 }

@@ -39,6 +39,9 @@ String datumLang(DateTime d) => DateFormat('EEEE, d. MMMM', 'de_DE').format(d);
 String datumMittel(DateTime d) => DateFormat('EEE, d. MMM', 'de_DE').format(d);
 String datumKurz(DateTime d) => DateFormat('dd.MM.yyyy', 'de_DE').format(d);
 String uhrzeit(DateTime d) => DateFormat('HH:mm', 'de_DE').format(d);
+
+/// Minuten seit 0:00 als `09:30`.
+String uhrzeitMinuten(int m) => '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
 String monatName(Monat m) => DateFormat('MMMM yyyy', 'de_DE').format(monatsErster(m));
 String monatKurz(Monat m) => DateFormat('MMM yy', 'de_DE').format(monatsErster(m));
 

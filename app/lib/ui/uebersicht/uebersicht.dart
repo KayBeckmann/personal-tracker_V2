@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/aufgaben/auswahl.dart';
 import '../../core/finanzen/prognose.dart';
 import '../../core/kalender/vorkommen.dart';
 import '../../core/modell/datum.dart';
 import '../../core/sitzung.dart';
+import '../aufgaben/aufgaben.dart';
 import '../bausteine.dart';
 import '../erfassen.dart';
 import '../finanzen/prognose_anzeige.dart';
@@ -14,7 +16,8 @@ import '../notizen/notiz_editor.dart';
 import '../termine/termin_formular.dart';
 import '../thema.dart';
 
-/// Ruhige Startansicht mit vier klar getrennten Blöcken.
+/// Ruhige Startansicht mit vier klar getrennten Blöcken; Überfälliges
+/// erscheint nur bei Bedarf als eigener Block darüber.
 class UebersichtSeite extends ConsumerWidget {
   const UebersichtSeite({super.key});
 
@@ -30,6 +33,7 @@ class UebersichtSeite extends ConsumerWidget {
     final woche = alleVorkommen(b.termine.values, morgen, DateTime(heute.year, heute.month, heute.day + 7))
         .where((v) => !tagVon(v.beginn).isBefore(morgen))
         .toList();
+    final aufgaben = TagesAuswahl(b.aufgaben.values, jetzt);
     final p = berechnePrognose(b, jetzt);
     final gehe = ref.read(bereichProvider.notifier).gehe;
     final letzte = b.einstellungen.letzteSicherung;
@@ -73,20 +77,41 @@ class UebersichtSeite extends ConsumerWidget {
                 : 'Kein Konto und kein Server nötig · letzte Sicherung ${vorWieLanger(letzte, jetzt)}.',
           ),
         const SizedBox(height: 22),
+        if (aufgaben.ueberfaellig.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 18),
+            child: Karte(
+              key: const Key('karte-ueberfaellig'),
+              titel: 'Überfällig',
+              marke: '${aufgaben.ueberfaellig.length}',
+              markeWarnung: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (i, a) in aufgaben.ueberfaellig.take(3).indexed) AufgabenZeile(aufgabe: a, jetzt: jetzt, ersteZeile: i == 0),
+                  if (aufgaben.ueberfaellig.length > 3) Leer('… und ${aufgaben.ueberfaellig.length - 3} weitere'),
+                  Weiter('Aufgaben öffnen', onPressed: () => gehe(Bereich.aufgaben)),
+                ],
+              ),
+            ),
+          ),
         Raster(
           kinder: [
             Karte(
               key: const Key('karte-heute'),
               titel: 'Heute',
-              marke: heuteListe.isEmpty ? null : '${heuteListe.length} ${heuteListe.length == 1 ? 'Termin' : 'Termine'}',
+              marke: _anzahl(heuteListe.length, aufgaben.heute.length + aufgaben.heuteWeitere),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (heuteListe.isEmpty) const Leer('Heute stehen keine Termine an.'),
+                  if (heuteListe.isEmpty && aufgaben.heute.isEmpty) const Leer('Heute stehen keine Termine und Aufgaben an.'),
+                  for (final (i, a) in aufgaben.heute.indexed) AufgabenZeile(aufgabe: a, jetzt: jetzt, ersteZeile: i == 0),
+                  if (aufgaben.heuteWeitere > 0)
+                    Weiter('${aufgaben.heuteWeitere} weitere ${aufgaben.heuteWeitere == 1 ? 'Aufgabe' : 'Aufgaben'} heute', onPressed: () => gehe(Bereich.aufgaben)),
                   for (final (i, v) in heuteListe.take(5).indexed)
                     Zeile(
-                      ersteZeile: i == 0,
-                      vorne: Icon(Icons.circle_outlined, size: 18, color: f.meterFuellung),
+                      ersteZeile: i == 0 && aufgaben.heute.isEmpty,
+                      vorne: Icon(Icons.calendar_today_outlined, size: 17, color: f.leise),
                       titel: v.termin.titel,
                       unter: [
                         v.termin.ganztaegig ? 'ganztägig' : uhrzeit(v.beginn),
@@ -105,15 +130,18 @@ class UebersichtSeite extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (woche.isEmpty) const Leer('Die nächsten sieben Tage sind frei.'),
+                  if (woche.isEmpty && aufgaben.woche.isEmpty) const Leer('Die nächsten sieben Tage sind frei.'),
+                  for (final (i, a) in aufgaben.woche.indexed) AufgabenZeile(aufgabe: a, jetzt: jetzt, ersteZeile: i == 0),
                   for (final (i, v) in woche.take(4).indexed)
                     Zeile(
-                      ersteZeile: i == 0,
+                      ersteZeile: i == 0 && aufgaben.woche.isEmpty,
+                      vorne: Icon(Icons.calendar_today_outlined, size: 17, color: f.leise),
                       titel: v.termin.titel,
                       unter: '${wochentag(v.beginn)}${v.termin.ganztaegig ? '' : ' · ${uhrzeit(v.beginn)}'}',
                       onTap: () => vorkommenZeigen(context, ref, v),
                     ),
-                  if (woche.length > 4) Leer('… und ${woche.length - 4} weitere'),
+                  if (woche.length > 4) Leer('… und ${woche.length - 4} weitere Termine'),
+                  Weiter('Aufgaben öffnen', onPressed: () => gehe(Bereich.aufgaben)),
                 ],
               ),
             ),
@@ -175,4 +203,13 @@ class UebersichtSeite extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// „2 Termine · 1 Aufgabe“ oder `null`, wenn nichts ansteht.
+String? _anzahl(int termine, int aufgaben) {
+  final teile = [
+    if (termine > 0) '$termine ${termine == 1 ? 'Termin' : 'Termine'}',
+    if (aufgaben > 0) '$aufgaben ${aufgaben == 1 ? 'Aufgabe' : 'Aufgaben'}',
+  ];
+  return teile.isEmpty ? null : teile.join(' · ');
 }

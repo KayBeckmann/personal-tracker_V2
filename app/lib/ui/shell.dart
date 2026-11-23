@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/dienste/erinnerungen.dart';
 import '../core/sitzung.dart';
+import 'aufgaben/aufgaben.dart';
 import 'einstellungen/einstellungen.dart';
 import 'finanzen/haushaltsbuch.dart';
 import 'navigation.dart';
@@ -57,6 +58,7 @@ class _ShellState extends ConsumerState<Shell> {
     final inhalt = switch (bereich) {
       Bereich.uebersicht => const UebersichtSeite(),
       Bereich.termine => const TermineSeite(),
+      Bereich.aufgaben => const AufgabenSeite(),
       Bereich.notizen => const NotizenSeite(),
       Bereich.finanzen => const HaushaltsbuchSeite(),
       Bereich.einstellungen => const EinstellungenSeite(),
