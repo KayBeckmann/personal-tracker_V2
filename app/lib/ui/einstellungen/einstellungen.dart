@@ -181,7 +181,7 @@ class _EinstellungenSeiteState extends ConsumerState<EinstellungenSeite> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Verschlüsselte Datei mit allen Terminen, Notizen und Buchungen. Zum Einlesen braucht es den '
+                    'Verschlüsselte Datei mit allen Terminen, Aufgaben, Notizen und Buchungen. Zum Einlesen braucht es den '
                     'Recovery-Schlüssel. Bitte an einem zweiten Ort aufbewahren — es gibt keinen automatischen Upload.',
                     style: klein,
                   ),

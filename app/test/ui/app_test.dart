@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:personal_tracker/core/kalender/vorkommen.dart';
+import 'package:personal_tracker/core/modell/aufgabe.dart';
 import 'package:personal_tracker/core/modell/datum.dart';
 import 'package:personal_tracker/core/modell/finanzen.dart';
 import 'package:personal_tracker/core/modell/notiz.dart';
@@ -225,6 +226,7 @@ void main() {
       await s.speichereKonto(Konto(id: 'k1', name: 'Giro', art: KontoArt.bank, geaendert: jetzt));
       await s.speichereBuchung(Buchung(id: 'b1', kontoId: 'k1', datum: DateTime.now(), empfaenger: 'Laden', betragCent: -999, status: BuchungsStatus.gebucht, geaendert: jetzt));
       await s.speichereTermin(Termin(id: 't1', titel: 'Arzt', beginn: DateTime.now(), geaendert: jetzt));
+      await s.speichereAufgabe(Aufgabe(id: 'a1', titel: 'Steuer', prioritaet: Prioritaet.hoch, geaendert: jetzt));
     });
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('hinweis-sicherung')), findsOneWidget, reason: 'Daten ohne Sicherung');
@@ -256,6 +258,79 @@ void main() {
     expect(b.notizen['n1']!.text, 'Inhalt');
     expect(b.saldoCent('k1'), -999);
     expect(b.termine.keys, ['t1']);
+    expect(b.aufgaben['a1']!.prioritaet, Prioritaet.hoch);
+  });
+
+  testWidgets('Aufgaben: erfassen, in der Übersicht abhaken, Rückgängig, Überfällig, Liste', (tester) async {
+    final g = TestGeraet();
+    final c = await appStarten(tester, g, groesse: handy);
+    await direktEinrichten(tester, c);
+    final heute = tagVon(DateTime.now());
+
+    // Über „Erfassen“: heute, hoch, wöchentlich, mit Erinnerung.
+    await tippe(tester, 'erfassen');
+    await tippe(tester, 'erfassen-aufgabe');
+    await schreibe(tester, 'aufgabe-titel', 'Mülltonne raus');
+    await tippe(tester, 'faellig-heute');
+    await tippe(tester, 'prioritaet-hoch');
+    await waehle(tester, 'aufgabe-wiederholung', 'wöchentlich');
+    await tippe(tester, 'aufgabe-erinnern');
+    await tippe(tester, 'aufgabe-speichern');
+    final a = c.read(bestandProvider).aufgaben.values.single;
+    expect(a.faellig, heute);
+    expect(a.prioritaet, Prioritaet.hoch);
+    expect(a.wiederholung!.rhythmus, Rhythmus.woechentlich);
+    expect(a.erinnerungUm, 9 * 60);
+    expect(find.descendant(of: find.byKey(const Key('karte-heute')), matching: find.text('Mülltonne raus')), findsOneWidget);
+
+    // Abhaken in der Übersicht → nächste Runde, dann rückgängig.
+    await tippe(tester, 'abhaken-${a.id}');
+    expect(c.read(bestandProvider).aufgaben[a.id]!.faellig, heute.add(const Duration(days: 7)));
+    expect(find.textContaining('nächste Runde'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('karte-heute')), matching: find.text('Mülltonne raus')), findsNothing);
+    expect(find.descendant(of: find.byKey(const Key('karte-woche')), matching: find.text('Mülltonne raus')), findsOneWidget,
+        reason: 'nächste Runde in 7 Tagen, wichtig');
+    await tester.tap(find.text('Rückgängig'));
+    await tester.pumpAndSettle();
+    expect(c.read(bestandProvider).aufgaben[a.id]!.faellig, heute);
+    expect(c.read(bestandProvider).aufgaben[a.id]!.verlauf, isEmpty);
+
+    // Überfällige Aufgabe: eigener Block, nicht doppelt.
+    await tester.runAsync(() => c.read(sitzungProvider.notifier).speichereAufgabe(
+        Aufgabe(id: 'alt', titel: 'Rechnung zahlen', faellig: heute.subtract(const Duration(days: 2)), geaendert: DateTime.now())));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byKey(const Key('karte-ueberfaellig')), matching: find.text('Rechnung zahlen')), findsOneWidget);
+    expect(find.text('Rechnung zahlen'), findsOneWidget);
+
+    // Aufgabenliste: Gruppen, Suche, einmalige abhaken und wieder öffnen.
+    await tippe(tester, 'nav-aufgaben');
+    expect(find.descendant(of: find.byKey(const Key('gruppe-ueberfaellig')), matching: find.text('Rechnung zahlen')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('gruppe-heute')), matching: find.text('Mülltonne raus')), findsOneWidget);
+    await schreibe(tester, 'aufgabe-suche', 'rechnung');
+    expect(find.text('Mülltonne raus'), findsNothing);
+    await schreibe(tester, 'aufgabe-suche', '');
+    await tippe(tester, 'abhaken-alt');
+    expect(c.read(bestandProvider).aufgaben['alt']!.offen, isFalse);
+    expect(find.byKey(const Key('gruppe-ueberfaellig')), findsNothing);
+    // Snackbar „Rückgängig“ ablaufen lassen, sie liegt über der Liste.
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+    await tippe(tester, 'erledigte-zeigen');
+    await tippe(tester, 'abhaken-alt');
+    expect(c.read(bestandProvider).aufgaben['alt']!.offen, isTrue);
+
+    // Bearbeiten: Datum entfernen nimmt Wiederholung und Erinnerung mit; löschen.
+    await tippe(tester, 'aufgabe-${a.id}');
+    await tippe(tester, 'faellig-ohne');
+    await tippe(tester, 'aufgabe-speichern');
+    final ohne = c.read(bestandProvider).aufgaben[a.id]!;
+    expect((ohne.faellig, ohne.wiederholung, ohne.erinnerungUm), (null, null, null));
+    expect(find.descendant(of: find.byKey(const Key('gruppe-ohneDatum')), matching: find.text('Mülltonne raus')), findsOneWidget);
+    await tippe(tester, 'aufgabe-${a.id}');
+    await tippe(tester, 'aufgabe-loeschen');
+    await tippe(tester, 'bestaetigen-ja');
+    expect(c.read(bestandProvider).aufgaben.keys, ['alt']);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Sperren schließt offene Seiten (keine Daten über dem Sperrbildschirm)', (tester) async {
@@ -286,13 +361,32 @@ void main() {
         await s.umbuchen(vonKonto: 'k1', nachKonto: 'k2', betragCent: 2000, datum: jetzt);
         await s.speichereTermin(Termin(id: 't1', titel: 'Ein ziemlich langer Termintitel für die Ansicht', beginn: jetzt, ort: 'Rathaus', erinnerungMinuten: 15, wiederholung: const Wiederholung(Rhythmus.taeglich), geaendert: jetzt));
         await s.speichereNotiz(Notiz(id: 'n1', titel: '', text: '# Überschrift\nText', erstellt: jetzt, geaendert: jetzt));
+        final heute = tagVon(jetzt);
+        for (final (i, tage) in [-3, -1, 0, 0, 0, 2, 5, 30].indexed) {
+          await s.speichereAufgabe(Aufgabe(
+            id: 'a$i',
+            titel: 'Aufgabe Nummer $i mit einem recht langen Titel zum Umbrechen',
+            faellig: heute.add(Duration(days: tage)),
+            erinnerungUm: 8 * 60,
+            prioritaet: Prioritaet.values[i % 3],
+            wiederholung: i.isEven ? const Wiederholung(Rhythmus.monatlich, intervall: 2) : null,
+            geaendert: jetzt,
+          ));
+        }
+        await s.speichereAufgabe(Aufgabe(id: 'frei', titel: 'Ohne Datum', prioritaet: Prioritaet.hoch, geaendert: jetzt));
+        await s.speichereAufgabe(Aufgabe(id: 'fertig', titel: 'Erledigt', erledigt: jetzt.toUtc(), geaendert: jetzt));
       });
       await tester.pumpAndSettle();
-      for (final bereich in ['uebersicht', 'termine', 'notizen', 'finanzen', 'einstellungen']) {
+      for (final bereich in ['uebersicht', 'termine', 'aufgaben', 'notizen', 'finanzen', 'einstellungen']) {
         await tippe(tester, 'nav-$bereich');
         final fehler = tester.takeException();
         expect(fehler, isNull, reason: '$bereich: ${fehler is FlutterError ? fehler.toStringDeep() : fehler}');
       }
+      await tippe(tester, 'nav-aufgaben');
+      await tippe(tester, 'erledigte-zeigen');
+      await tippe(tester, 'aufgabe-a0');
+      final fehler = tester.takeException();
+      expect(fehler, isNull, reason: 'Formular: ${fehler is FlutterError ? fehler.toStringDeep() : fehler}');
     });
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/sitzung.dart';
+import 'aufgaben/aufgabe_formular.dart';
 import 'bausteine.dart';
 import 'finanzen/formulare.dart';
 import 'notizen/notiz_editor.dart';
@@ -14,6 +15,8 @@ Future<void> erfassen(BuildContext context, WidgetRef ref) async {
   final wahl = await showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
+    // Fünf Einträge: auf kleinen Handys scrollbar statt abgeschnitten.
+    isScrollControlled: true,
     builder: (ctx) {
       Widget eintrag(String id, IconData icon, String titel, String text) => ListTile(
             key: Key('erfassen-$id'),
@@ -26,12 +29,13 @@ Future<void> erfassen(BuildContext context, WidgetRef ref) async {
             onTap: () => Navigator.pop(ctx, id),
           );
       return SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               eintrag('termin', Icons.calendar_today_outlined, 'Termin', 'Mit Uhrzeit oder ganztägig, auch wiederkehrend'),
+              eintrag('aufgabe', Icons.task_alt, 'Aufgabe', 'Mit Fälligkeit und Wichtigkeit, auf Wunsch wiederkehrend'),
               eintrag('notiz', Icons.notes_outlined, 'Notiz', 'Markdown, nur auf diesem Gerät'),
               eintrag('ausgabe', Icons.remove_circle_outline, 'Ausgabe oder Einnahme', 'Gebucht oder geplant'),
               eintrag('umbuchung', Icons.swap_horiz, 'Umbuchung', 'Zwischen zwei eigenen Konten'),
@@ -45,6 +49,8 @@ Future<void> erfassen(BuildContext context, WidgetRef ref) async {
   switch (wahl) {
     case 'termin':
       await terminBearbeiten(context, ref);
+    case 'aufgabe':
+      await aufgabeBearbeiten(context, ref);
     case 'notiz':
       await notizOeffnen(context, null);
     case 'ausgabe':
