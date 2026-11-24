@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/dienste/erinnerungen.dart';
 import '../core/sitzung.dart';
+import '../core/sync/sync_dienst.dart';
 import 'aufgaben/aufgaben.dart';
 import 'einstellungen/einstellungen.dart';
 import 'finanzen/haushaltsbuch.dart';
@@ -120,6 +121,8 @@ class _ShellState extends ConsumerState<Shell> {
   }
 }
 
+String _markenUnter(WidgetRef ref) => ref.watch(syncProvider).verbunden ? 'V2 · SYNC' : 'V2 · LOKAL';
+
 class _Seitenleiste extends ConsumerWidget {
   const _Seitenleiste({required this.aktiv});
   final Bereich aktiv;
@@ -134,7 +137,7 @@ class _Seitenleiste extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Padding(padding: EdgeInsets.fromLTRB(10, 0, 10, 30), child: Markenzeichen()),
+          Padding(padding: const EdgeInsets.fromLTRB(10, 0, 10, 30), child: Markenzeichen(unter: _markenUnter(ref))),
           for (final b in Bereich.values)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -213,7 +216,7 @@ class _SchmaleLeiste extends ConsumerWidget {
         children: [
           Row(
             children: [
-              const Expanded(child: Markenzeichen()),
+              Expanded(child: Markenzeichen(unter: _markenUnter(ref))),
               IconButton(
                 key: const Key('sperren'),
                 tooltip: 'Sperren',
