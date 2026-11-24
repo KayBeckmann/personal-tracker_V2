@@ -11,7 +11,7 @@ import 'speicher.dart';
 /// Version des Sync-Vertrags (Pfadpräfix `/v1`). Innerhalb einer Version
 /// kommen nur Felder hinzu; Clients ignorieren unbekannte Felder.
 const apiVersion = 1;
-const serverVersion = '1.0.0';
+const serverVersion = '1.1.0';
 
 class Konfiguration {
   const Konfiguration({
@@ -20,6 +20,8 @@ class Konfiguration {
     this.maxObjekt = 1024 * 1024,
     this.maxProSchreiben = 200,
     this.maxProAbruf = 500,
+    this.maxBlock = 1024 * 1024 + 64 * 1024,
+    this.maxKonto = 0,
     this.anmeldungenProFenster = 20,
     this.fenster = const Duration(minutes: 10),
     this.hinterProxy = false,
@@ -33,6 +35,13 @@ class Konfiguration {
   final int maxObjekt;
   final int maxProSchreiben;
   final int maxProAbruf;
+
+  /// Größte Blockgröße (Geheimtext). Die Clients teilen Dateien in Blöcke
+  /// zu 1 MiB; der Rest ist Platz für Nonce, Tag und Auffüllung.
+  final int maxBlock;
+
+  /// Speicherplatz je Konto in Byte (Objekte und Blöcke); 0 = unbegrenzt.
+  final int maxKonto;
 
   /// Begrenzung für Anmeldung, Kontoanlage und Kopplung je IP-Adresse.
   final int anmeldungenProFenster;
@@ -58,6 +67,8 @@ Response _json(Object? daten, {int status = 200}) =>
 /// Der komplette Server als shelf-Handler (auch für Tests im Speicher).
 Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
   final versuche = <String, List<DateTime>>{};
+  final hex64 = RegExp(r'^[0-9a-f]{64}$');
+  final objektId = RegExp(r'^[0-9a-f]{32,64}$');
 
   void begrenzen(Request r) {
     var ip = (r.context['shelf.io.connection_info'] as HttpConnectionInfo?)?.remoteAddress.address ?? 'lokal';
@@ -81,6 +92,23 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
     } catch (_) {
       throw _Fehler(400, 'ungueltig', 'Kein gültiges JSON.');
     }
+  }
+
+  Future<Uint8List> roh(Request r, int max) async {
+    final puffer = BytesBuilder(copy: false);
+    await for (final teil in r.read()) {
+      puffer.add(teil);
+      if (puffer.length > max) throw _Fehler(413, 'zu-gross', 'Block zu groß.');
+    }
+    return puffer.takeBytes();
+  }
+
+  List<String> idListe(Map<String, dynamic> j, String name, {int max = 5000}) {
+    final v = j[name];
+    if (v is! List || v.length > max || v.any((x) => x is! String || !objektId.hasMatch(x))) {
+      throw _Fehler(400, 'ungueltig', '„$name“ muss eine Liste von höchstens $max Block-IDs sein.');
+    }
+    return v.cast<String>();
   }
 
   T feld<T>(Map<String, dynamic> j, String name, {int maxLaenge = 65536}) {
@@ -107,8 +135,6 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
     return g;
   }
 
-  final hex64 = RegExp(r'^[0-9a-f]{64}$');
-  final objektId = RegExp(r'^[0-9a-f]{32,64}$');
 
   final app = Router()
     ..get('/v1/info', (Request r) => _json({'dienst': 'personal-tracker-sync', 'api': apiVersion, 'version': serverVersion, 'instanz': s.instanz}))
@@ -219,12 +245,42 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
       for (final a in aenderungen) {
         if (!objektId.hasMatch(a.id)) throw _Fehler(400, 'ungueltig', 'Ungültige Objekt-ID.');
       }
+      if (k.maxKonto > 0 && s.belegt(g.konto) + aenderungen.fold(0, (n, a) => n + a.daten.length) > k.maxKonto) {
+        throw _Fehler(413, 'kontingent', 'Der Speicherplatz dieses Kontos ist aufgebraucht.');
+      }
       final e = s.schreiben(g.konto, aenderungen);
       return _json({
         'ergebnisse': [
           for (final x in e) {'id': x.id, 'status': x.ok ? 'ok' : 'konflikt', 'seq': x.seq, if (x.daten != null) 'daten': x.daten},
         ],
       });
+    })
+    ..put('/v1/bloecke/<id>', (Request r, String id) async {
+      final g = angemeldet(r);
+      if (!objektId.hasMatch(id)) throw _Fehler(400, 'ungueltig', 'Ungültige Block-ID.');
+      final daten = await roh(r, k.maxBlock);
+      if (daten.isEmpty) throw _Fehler(400, 'ungueltig', 'Leerer Block.');
+      try {
+        s.blockSchreiben(g.konto, id, daten, maxKonto: k.maxKonto);
+      } on SpeicherFehler catch (e) {
+        throw _Fehler(413, 'kontingent', e.meldung);
+      }
+      return _json({'ok': true});
+    })
+    ..get('/v1/bloecke/<id>', (Request r, String id) {
+      final g = angemeldet(r);
+      final daten = objektId.hasMatch(id) ? s.blockLesen(g.konto, id) : null;
+      if (daten == null) throw _Fehler(404, 'nicht-gefunden', 'Block nicht gefunden.');
+      return Response.ok(daten, headers: {'content-type': 'application/octet-stream'});
+    })
+    ..post('/v1/bloecke/fehlend', (Request r) async {
+      final g = angemeldet(r);
+      return _json({'fehlend': s.bloeckeFehlend(g.konto, idListe(await lies(r), 'ids'))});
+    })
+    ..post('/v1/bloecke/aufraeumen', (Request r) async {
+      final g = angemeldet(r);
+      final behalten = idListe(await lies(r), 'behalten', max: 200000).toSet();
+      return _json({'geloescht': s.bloeckeAufraeumen(g.konto, behalten)});
     });
 
   Handler fehlerBehandeln(Handler inner) => (r) async {

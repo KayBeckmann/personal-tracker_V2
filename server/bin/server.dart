@@ -11,6 +11,7 @@ import 'package:shelf/shelf_io.dart' as io;
 /// - `PT_URSPRUNG` – erlaubter Ursprung der Web-App (Standard `*`)
 /// - `PT_HINTER_PROXY=1` – Client-IP aus `X-Forwarded-For` (nur hinter
 ///   eigenem Reverse-Proxy setzen)
+/// - `PT_MAX_KONTO_MB` – Speicherplatz je Konto in MiB (Standard: unbegrenzt)
 ///
 /// `pt-sync sichern <ziel.db>` schreibt eine konsistente Kopie der
 /// Datenbank (auch bei laufendem Server) und beendet sich.
@@ -34,6 +35,7 @@ Future<void> main(List<String> args) async {
     k: Konfiguration(
       ursprung: env['PT_URSPRUNG'] ?? '*',
       hinterProxy: env['PT_HINTER_PROXY'] == '1',
+      maxKonto: (int.tryParse(env['PT_MAX_KONTO_MB'] ?? '') ?? 0) * 1024 * 1024,
       protokoll: stdout.writeln,
     ),
   );
