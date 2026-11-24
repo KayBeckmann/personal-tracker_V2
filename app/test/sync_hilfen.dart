@@ -40,14 +40,14 @@ class TestServer {
         } else {
           _abgebrochen = false;
         }
-        final antwort = await handler(shelf.Request(req.method, req.url, body: req.body, headers: req.headers));
+        final antwort = await handler(shelf.Request(req.method, req.url, body: req.bodyBytes, headers: req.headers));
         if (verlieren) throw http.ClientException('Antwort verloren');
         return http.Response.bytes(await antwort.read().expand((x) => x).toList(), antwort.statusCode, headers: antwort.headers);
       });
 
   /// Alles, was der Server gespeichert hat (für „Admin sieht nur Geheimtext“).
   String dump() => jsonEncode([
-        for (final t in ['konten', 'geraete', 'objekte', 'kopplungen', 'meta'])
-          for (final r in speicher.db.select('SELECT * FROM $t')) r.values.map((v) => '$v').toList(),
+        for (final t in ['konten', 'geraete', 'objekte', 'kopplungen', 'bloecke', 'meta'])
+          for (final r in speicher.db.select('SELECT * FROM $t')) r.values.map((v) => v is List<int> ? latin1.decode(v) : '$v').toList(),
       ]);
 }

@@ -1,0 +1,26 @@
+// Kopie von protokoll/secret-muster.json (Test prüft Gleichheit).
+// Erzeugen: siehe app/README.md, Abschnitt Vault.
+const secretMusterJson = r'''{
+  "version": 1,
+  "hinweis": "Gemeinsame Secret-Muster für App und Obsidian-Plugin. Eine Regel meldet nur Name und Zeile, nie den gefundenen Wert. Platzhalter schließt Werte aus, die offensichtlich keine echten Geheimnisse sind.",
+  "platzhalter": "^(?:\\*+|x{3,}|\\.{3,}|<[^>]*>|\\[[^\\]]*\\]|\\{\\{.*\\}\\}|\\$\\{?[A-Za-z_][A-Za-z0-9_]*\\}?|\\$\\(.*|changeme|example\\S*|beispiel\\S*|platzhalter|your[_-]\\S*|dein[_-]?\\S*|todo|none|null|undefined|true|false|process\\.env\\S*)$",
+  "regeln": [
+    {"name": "Privater Schlüssel", "muster": "-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"},
+    {"name": "AWS-Zugangsschlüssel", "muster": "\\b(?:AKIA|ASIA)[0-9A-Z]{16}\\b"},
+    {"name": "GitHub-Token", "muster": "\\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})"},
+    {"name": "GitLab-Token", "muster": "\\bglpat-[A-Za-z0-9_\\-]{20,}"},
+    {"name": "Slack-Token", "muster": "\\bxox[abposr]-[A-Za-z0-9\\-]{10,}"},
+    {"name": "API-Schlüssel (sk-…)", "muster": "\\bsk-(?:ant-|proj-)?[A-Za-z0-9_\\-]{20,}"},
+    {"name": "Google-API-Schlüssel", "muster": "\\bAIza[0-9A-Za-z_\\-]{35}"},
+    {"name": "Stripe-Schlüssel", "muster": "\\b[rs]k_live_[0-9A-Za-z]{20,}"},
+    {"name": "Hugging-Face-Token", "muster": "\\bhf_[A-Za-z0-9]{30,}"},
+    {"name": "npm-Token", "muster": "\\bnpm_[A-Za-z0-9]{36}\\b"},
+    {"name": "Matrix-Zugangstoken", "muster": "\\bsyt_[A-Za-z0-9_\\-]{20,}"},
+    {"name": "Telegram-Bot-Token", "muster": "\\b\\d{8,10}:AA[A-Za-z0-9_\\-]{33}\\b"},
+    {"name": "JSON Web Token", "muster": "\\beyJ[A-Za-z0-9_\\-]{10,}\\.eyJ[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}"},
+    {"name": "Bitcoin-Privatschlüssel", "muster": "\\b(?:[5KL][1-9A-HJ-NP-Za-km-z]{50,51}|xprv[1-9A-HJ-NP-Za-km-z]{100,})\\b"},
+    {"name": "Zugangsdaten in einer Adresse", "muster": "\\b[a-z][a-z0-9+.\\-]*://[^\\s/:@]+:([^\\s/@]{3,})@", "wert": 1},
+    {"name": "Passwort- oder Token-Zuweisung", "muster": "(?:passwor[dt]|passwd|pwd|kennwort|secret|geheimnis|token|api[_\\- ]?key|apikey|access[_\\- ]?key|client[_\\- ]?secret|private[_\\- ]?key|seed)[\"']?\\s*[:=]\\s*[\"'`]?([^\\s\"'`]{8,})", "flags": "i", "wert": 1}
+  ]
+}
+''';

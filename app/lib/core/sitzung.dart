@@ -259,7 +259,7 @@ class SitzungNotifier extends Notifier<Sitzung> {
       await ref.read(biometrieProvider).loeschen();
     } catch (_) {}
     await _ablage.transaktion((tx) async {
-      for (final b in [...Ablage.bereiche, ...Ablage.syncBereiche]) {
+      for (final b in [...Ablage.bereiche, ...Ablage.syncBereiche, ...Ablage.vaultBereiche]) {
         await _ablage.leeren(b, tx: tx);
       }
       await _ablage.setzeMeta(metaBund, null, tx: tx);

@@ -103,6 +103,36 @@ class SyncApi {
     );
   }
 
+  Future<http.Response> _binaer(String methode, String pfad, {Uint8List? body}) async {
+    final req = http.Request(methode, _uri(pfad));
+    if (token != null) req.headers['authorization'] = 'Bearer $token';
+    if (body != null) {
+      req.headers['content-type'] = 'application/octet-stream';
+      req.bodyBytes = body;
+    }
+    final http.Response antwort;
+    try {
+      antwort = await http.Response.fromStream(await _client.send(req).timeout(zeitlimit * 2));
+    } on TimeoutException {
+      throw SyncFehler(SyncFehlerArt.netz, 'Der Server antwortet nicht.');
+    } catch (e) {
+      throw SyncFehler(SyncFehlerArt.netz, 'Server nicht erreichbar. Bist du online und stimmt die Adresse?');
+    }
+    if (antwort.statusCode >= 200 && antwort.statusCode < 300) return antwort;
+    String? meldung;
+    try {
+      meldung = (jsonDecode(antwort.body) as Map)['meldung'] as String?;
+    } catch (_) {}
+    throw SyncFehler(
+      switch (antwort.statusCode) {
+        401 => SyncFehlerArt.anmeldung,
+        404 => SyncFehlerArt.nichtGefunden,
+        _ => SyncFehlerArt.server,
+      },
+      meldung ?? 'Serverfehler ${antwort.statusCode}.',
+    );
+  }
+
   /// Prüft, ob unter der Adresse ein passender Server läuft.
   Future<Map<String, dynamic>> info() async {
     final j = await _anfrage('GET', '/v1/info');
@@ -192,4 +222,22 @@ class SyncApi {
         (id: e['id'] as String, ok: e['status'] == 'ok', seq: e['seq'] as int),
     ];
   }
+
+  // Blöcke des Vault-Syncs (Server ab 1.1.0)
+
+  Future<void> blockSchreiben(String id, Uint8List daten) => _binaer('PUT', '/v1/bloecke/$id', body: daten);
+
+  Future<Uint8List> blockLesen(String id) async => (await _binaer('GET', '/v1/bloecke/$id')).bodyBytes;
+
+  Future<List<String>> bloeckeFehlend(List<String> ids) async {
+    final fehlend = <String>[];
+    for (var i = 0; i < ids.length; i += 5000) {
+      final j = await _anfrage('POST', '/v1/bloecke/fehlend', body: {'ids': ids.sublist(i, i + 5000 > ids.length ? ids.length : i + 5000)});
+      fehlend.addAll((j['fehlend'] as List).cast<String>());
+    }
+    return fehlend;
+  }
+
+  Future<int> bloeckeAufraeumen(List<String> behalten) async =>
+      (await _anfrage('POST', '/v1/bloecke/aufraeumen', body: {'behalten': behalten}))['geloescht'] as int;
 }

@@ -32,6 +32,9 @@ class SyncStatus {
     this.fehler,
     this.fehlerArt,
     this.ausstehend = 0,
+    this.vaultGesperrt = const {},
+    this.vaultZuGross = const {},
+    this.vaultFehlt = const {},
   });
 
   final bool verbunden;
@@ -45,12 +48,21 @@ class SyncStatus {
   /// Lokale Änderungen, die noch nicht beim Server sind.
   final int ausstehend;
 
+  /// Vault-Dateien, die beim letzten Abgleich nicht gesendet wurden
+  /// (Secret-Treffer ohne Freigabe, zu groß, Block fehlt).
+  final Set<String> vaultGesperrt;
+  final Set<String> vaultZuGross;
+  final Set<String> vaultFehlt;
+
   SyncStatus mit({
     bool? laeuft,
     DateTime? letzter,
     String? Function()? fehler,
     SyncFehlerArt? Function()? fehlerArt,
     int? ausstehend,
+    Set<String>? vaultGesperrt,
+    Set<String>? vaultZuGross,
+    Set<String>? vaultFehlt,
   }) =>
       SyncStatus(
         verbunden: verbunden,
@@ -61,6 +73,9 @@ class SyncStatus {
         fehler: fehler != null ? fehler() : this.fehler,
         fehlerArt: fehlerArt != null ? fehlerArt() : this.fehlerArt,
         ausstehend: ausstehend ?? this.ausstehend,
+        vaultGesperrt: vaultGesperrt ?? this.vaultGesperrt,
+        vaultZuGross: vaultZuGross ?? this.vaultZuGross,
+        vaultFehlt: vaultFehlt ?? this.vaultFehlt,
       );
 }
 
@@ -135,6 +150,11 @@ class SyncNotifier extends Notifier<SyncStatus> {
     _verzoegert = _regelmaessig = null;
   }
 
+  /// Nach einer Änderung außerhalb des Bestands (z. B. Vault-Datei).
+  void nachAenderung() {
+    if (_sitzung.syncAktiv) _bald();
+  }
+
   void _bald() {
     final takt = ref.read(syncTaktProvider).nachAenderung;
     if (takt <= Duration.zero) return;
@@ -171,6 +191,7 @@ class SyncNotifier extends Notifier<SyncStatus> {
         api: _api(v.server, token: v.token),
         sperre: _sitzung.sperre,
         uhr: ref.read(uhrProvider),
+        vaultMaxBytes: s.bestand.einstellungen.vaultMaxMiB * 1024 * 1024,
       );
       final bericht = await motor.abgleichen();
       if (!ref.mounted || ref.read(sitzungProvider) is! Entsperrt) return bericht;
@@ -182,6 +203,9 @@ class SyncNotifier extends Notifier<SyncStatus> {
         fehler: () => bericht.defekt > 0 ? '${bericht.defekt} Einträge vom Server ließen sich nicht entschlüsseln und wurden übersprungen.' : null,
         fehlerArt: () => bericht.defekt > 0 ? SyncFehlerArt.daten : null,
         ausstehend: await _stand().anzahlAusstehend(),
+        vaultGesperrt: bericht.vaultGesperrt,
+        vaultZuGross: bericht.vaultZuGross,
+        vaultFehlt: bericht.vaultFehlt,
       );
       return bericht;
     } catch (e) {
@@ -250,7 +274,7 @@ class SyncNotifier extends Notifier<SyncStatus> {
       // Ab jetzt gilt der Recovery-Schlüssel des Kontos.
       if (!passtLokal) await _sitzung.bundErsetzen(s.bund.mitNeuemRecovery(s.dek, recovery));
     }
-    return _verbunden(Verbindung(server: server.trim(), konto: neu.konto, geraet: neu.geraet, token: neu.token, schluessel: ks!));
+    return _verbunden(Verbindung(server: server.trim(), konto: neu.konto, geraet: neu.geraet, token: neu.token, schluessel: ks!, name: name));
   }
 
   /// Mit einem Kopplungscode eines anderen Geräts verbinden; lokale Daten
@@ -287,7 +311,7 @@ class SyncNotifier extends Notifier<SyncStatus> {
     final teile = p.schluessel.recoveryTeileAus(konto['schluesselPaket'] as String);
     if (teile == null) throw SyncFehler(SyncFehlerArt.daten, 'Das Schlüsselpaket des Kontos ließ sich nicht öffnen.');
     await mitToken.geraetUmbenennen(e.geraet, p.schluessel.geraetName(name));
-    return (Verbindung(server: server.trim(), konto: e.konto, geraet: e.geraet, token: e.token, schluessel: p.schluessel), teile);
+    return (Verbindung(server: server.trim(), konto: e.konto, geraet: e.geraet, token: e.token, schluessel: p.schluessel, name: name), teile);
   }
 
   // ---------------------------------------------------------------------
@@ -313,12 +337,13 @@ class SyncNotifier extends Notifier<SyncStatus> {
     final a = await api.recoveryAnmelden(recovery.syncAnmeldung, '');
     final ks = recovery.kontoschluesselAus(a.recoveryHuelle);
     if (ks == null) throw SyncFehler(SyncFehlerArt.daten, 'Der Kontoschlüssel auf dem Server passt nicht zum Recovery-Schlüssel.');
-    await api.mitToken(a.token).geraetUmbenennen(a.geraet, ks.geraetName(geraetName ?? standardGeraetName()));
+    final name = geraetName ?? standardGeraetName();
+    await api.mitToken(a.token).geraetUmbenennen(a.geraet, ks.geraetName(name));
     final (:bund, :dek) = await Schluesselbund.anlegen(passwort, recovery, kdf: ref.read(kdfProvider)());
     await _sitzung.einrichtenAusSync(
       bund,
       dek,
-      Verbindung(server: server.trim(), konto: a.konto, geraet: a.geraet, token: a.token, schluessel: ks),
+      Verbindung(server: server.trim(), konto: a.konto, geraet: a.geraet, token: a.token, schluessel: ks, name: name),
     );
     return _laufend ?? abgleichen();
   }

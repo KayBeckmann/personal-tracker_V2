@@ -21,6 +21,11 @@ class Ablage {
   /// ebenfalls verschlüsselt, aber nicht Teil von Sicherungen.
   static const syncBereiche = ['sync', 'sync_ausgang'];
 
+  /// Vault-Dateien aus dem Sync (M4) und der Zwischenspeicher ihrer
+  /// Blöcke; nicht Teil des Bestands und nicht in Sicherungen (der Vault
+  /// hat sein eigenes Original im Obsidian-Ordner).
+  static const vaultBereiche = ['vault', 'vault_bloecke'];
+
   static final _meta = StoreRef<String, Object?>('meta');
 
   static Future<Ablage> oeffnen({DatabaseFactory? factory, String name = dateiname}) async {
