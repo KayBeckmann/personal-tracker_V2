@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sembast/sembast.dart' show DatabaseClient;
 import 'package:uuid/uuid.dart';
 
 import 'dienste/biometrie.dart';
@@ -279,7 +280,7 @@ class SitzungNotifier extends Notifier<Sitzung> {
         final s = _offen;
         final bestand = neu(s.bestand);
         final stand = _syncAktiv ? SyncStand(_ablage, s.dek) : null;
-        await _ablage.transaktion((tx) async {
+        Future<void> alle(DatabaseClient? tx) async {
           for (final (bereich, id, json) in datensaetze) {
             if (json == null) {
               await _ablage.loeschen(bereich, id, tx: tx);
@@ -288,7 +289,14 @@ class SitzungNotifier extends Notifier<Sitzung> {
             }
             await stand?.vormerken(bereich, id, tx: tx);
           }
-        });
+        }
+
+        // Ein einzelner Datensatz ohne Sync braucht keine Transaktion.
+        if (stand == null && datensaetze.length == 1) {
+          await alle(null);
+        } else {
+          await _ablage.transaktion(alle);
+        }
         state = _offen.mit(bestand: bestand);
       });
 

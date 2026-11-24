@@ -140,11 +140,21 @@ class SyncStand {
 /// Einfache Sperre: lokale Änderungen und das Einspielen vom Server
 /// laufen nacheinander, damit keine Änderung die andere überschreibt.
 class Sperre {
-  Future<void> _letzte = Future.value();
+  Future<void>? _aktiv;
 
-  Future<T> exklusiv<T>(Future<T> Function() aktion) {
-    final ergebnis = _letzte.then((_) => aktion());
-    _letzte = ergebnis.then((_) {}, onError: (_) {});
-    return ergebnis;
+  Future<T> exklusiv<T>(Future<T> Function() aktion) async {
+    // Im Leerlauf beginnt die Aktion sofort (ohne an eine frühere Future
+    // anzuhängen).
+    while (_aktiv != null) {
+      await _aktiv;
+    }
+    final fertig = Completer<void>();
+    _aktiv = fertig.future;
+    try {
+      return await aktion();
+    } finally {
+      _aktiv = null;
+      fertig.complete();
+    }
   }
 }
