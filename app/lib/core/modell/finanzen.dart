@@ -250,7 +250,7 @@ class Plan {
 
 /// Persönliche Einstellungen (verschlüsselt gespeichert).
 class Einstellungen {
-  const Einstellungen({this.ausgabenrahmenCent, this.erinnerungMitTitel = false, this.letzteSicherung});
+  const Einstellungen({this.ausgabenrahmenCent, this.erinnerungMitTitel = false, this.letzteSicherung, this.vaultMaxMiB = 100});
 
   /// Selbst gesetzter monatlicher Ausgabenrahmen — getrennt von der
   /// berechneten Prognose.
@@ -261,11 +261,16 @@ class Einstellungen {
   final bool erinnerungMitTitel;
   final DateTime? letzteSicherung;
 
-  Einstellungen kopie({int? Function()? ausgabenrahmenCent, bool? erinnerungMitTitel, DateTime? letzteSicherung}) =>
+  /// Größte Vault-Datei, die diese App hochlädt (MiB). Größere bleiben
+  /// lokal und werden als „zu groß“ angezeigt.
+  final int vaultMaxMiB;
+
+  Einstellungen kopie({int? Function()? ausgabenrahmenCent, bool? erinnerungMitTitel, DateTime? letzteSicherung, int? vaultMaxMiB}) =>
       Einstellungen(
         ausgabenrahmenCent: ausgabenrahmenCent != null ? ausgabenrahmenCent() : this.ausgabenrahmenCent,
         erinnerungMitTitel: erinnerungMitTitel ?? this.erinnerungMitTitel,
         letzteSicherung: letzteSicherung ?? this.letzteSicherung,
+        vaultMaxMiB: vaultMaxMiB ?? this.vaultMaxMiB,
       );
 
   Map<String, dynamic> toJson() => {
@@ -273,11 +278,13 @@ class Einstellungen {
         if (ausgabenrahmenCent != null) 'ausgabenrahmenCent': ausgabenrahmenCent,
         'erinnerungMitTitel': erinnerungMitTitel,
         if (letzteSicherung != null) 'letzteSicherung': letzteSicherung!.toUtc().toIso8601String(),
+        if (vaultMaxMiB != 100) 'vaultMaxMiB': vaultMaxMiB,
       };
 
   static Einstellungen fromJson(Map<String, dynamic> j) => Einstellungen(
         ausgabenrahmenCent: j['ausgabenrahmenCent'] as int?,
         erinnerungMitTitel: j['erinnerungMitTitel'] == true,
         letzteSicherung: j['letzteSicherung'] == null ? null : DateTime.parse(j['letzteSicherung'] as String),
+        vaultMaxMiB: (j['vaultMaxMiB'] as int?) ?? 100,
       );
 }

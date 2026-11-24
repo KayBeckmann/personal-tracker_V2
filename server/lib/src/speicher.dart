@@ -11,7 +11,10 @@ import 'package:sqlite3/sqlite3.dart';
 
 /// Schemaversion der Server-Datenbank. Migrationen laufen beim Start in
 /// einer Transaktion; eine neuere Datenbank lehnt der Server ab.
-const dbSchema = 1;
+///
+/// - 1: Konten, Geräte, Objekte, Kopplungen (M3)
+/// - 2: Blöcke für Dateiinhalte des Vault-Syncs (M4)
+const dbSchema = 2;
 
 final _zufall = Random.secure();
 
@@ -119,6 +122,15 @@ class Speicher {
         ablauf INTEGER NOT NULL
       );
     '''),
+    1: (db) => db.execute('''
+      CREATE TABLE bloecke (
+        konto TEXT NOT NULL REFERENCES konten(id) ON DELETE CASCADE,
+        id TEXT NOT NULL,
+        daten BLOB NOT NULL,
+        erstellt INTEGER NOT NULL,
+        PRIMARY KEY (konto, id)
+      );
+    '''),
   };
 
   int get _jetzt => DateTime.now().toUtc().millisecondsSinceEpoch;
@@ -203,11 +215,14 @@ class Speicher {
 
   Map<String, Object?> kontoInfo(String konto) {
     final k = db.select('SELECT seq, recovery_huelle, schluessel_paket, erstellt FROM konten WHERE id = ?', [konto]).first;
-    final n = db.select('SELECT count(*) n FROM objekte WHERE konto = ?', [konto]).first['n'];
+    final o = db.select('SELECT count(*) n, coalesce(sum(length(daten)), 0) b FROM objekte WHERE konto = ?', [konto]).first;
+    final b = db.select('SELECT count(*) n, coalesce(sum(length(daten)), 0) b FROM bloecke WHERE konto = ?', [konto]).first;
     return {
       'konto': konto,
       'seq': k['seq'],
-      'objekte': n,
+      'objekte': o['n'],
+      'bloecke': b['n'],
+      'belegt': (o['b'] as int) + (b['b'] as int),
       'recoveryHuelle': k['recovery_huelle'],
       'schluesselPaket': k['schluessel_paket'],
       'erstellt': _iso(k['erstellt'] as int),
@@ -314,6 +329,61 @@ class Speicher {
         }
         db.execute('UPDATE konten SET seq = ? WHERE id = ?', [seq, konto]);
         return ergebnisse;
+      });
+
+  // -------------------------------------------------------------------
+  // Blöcke (Dateiinhalte des Vault-Syncs)
+  //
+  // Die Clients verschlüsseln Dateien in Blöcken; die Block-ID ist ein
+  // HMAC über den Inhalt unter einem Kontoschlüssel. Welche Datei welche
+  // Blöcke nutzt, steht nur in den verschlüsselten Objekten.
+
+  /// Belegter Platz eines Kontos (Objekte und Blöcke) in Byte.
+  int belegt(String konto) =>
+      (db.select('SELECT coalesce(sum(length(daten)), 0) b FROM objekte WHERE konto = ?', [konto]).first['b'] as int) +
+      (db.select('SELECT coalesce(sum(length(daten)), 0) b FROM bloecke WHERE konto = ?', [konto]).first['b'] as int);
+
+  /// Speichert einen Block; gibt es ihn schon, bleibt er unverändert.
+  /// [maxKonto] > 0 begrenzt den Platz je Konto.
+  void blockSchreiben(String konto, String id, Uint8List daten, {int maxKonto = 0}) => transaktion(() {
+        if (db.select('SELECT 1 FROM bloecke WHERE konto = ? AND id = ?', [konto, id]).isNotEmpty) return;
+        if (maxKonto > 0 && belegt(konto) + daten.length > maxKonto) {
+          throw SpeicherFehler('Der Speicherplatz dieses Kontos ist aufgebraucht.');
+        }
+        db.execute('INSERT INTO bloecke (konto, id, daten, erstellt) VALUES (?, ?, ?, ?)', [konto, id, daten, _jetzt]);
+      });
+
+  Uint8List? blockLesen(String konto, String id) =>
+      db.select('SELECT daten FROM bloecke WHERE konto = ? AND id = ?', [konto, id]).firstOrNull?['daten'] as Uint8List?;
+
+  /// Welche der [ids] fehlen.
+  List<String> bloeckeFehlend(String konto, List<String> ids) {
+    final da = <String>{};
+    for (var i = 0; i < ids.length; i += 500) {
+      final teil = ids.sublist(i, i + 500 > ids.length ? ids.length : i + 500);
+      final rows = db.select(
+        'SELECT id FROM bloecke WHERE konto = ? AND id IN (${List.filled(teil.length, '?').join(',')})',
+        [konto, ...teil],
+      );
+      da.addAll(rows.map((r) => r['id'] as String));
+    }
+    return [for (final id in ids) if (!da.contains(id)) id];
+  }
+
+  /// Entfernt Blöcke, die keines der Objekte mehr braucht. Nur die
+  /// Clients wissen das; sie nennen alle noch benutzten Blöcke. Jüngere
+  /// Blöcke als [schonfrist] bleiben, weil ein anderes Gerät sie gerade
+  /// hochladen könnte, bevor sein Objekt beim Server ist.
+  int bloeckeAufraeumen(String konto, Set<String> behalten, {Duration schonfrist = const Duration(hours: 24)}) => transaktion(() {
+        final grenze = _jetzt - schonfrist.inMilliseconds;
+        final alt = [
+          for (final r in db.select('SELECT id FROM bloecke WHERE konto = ? AND erstellt < ?', [konto, grenze]))
+            if (!behalten.contains(r['id'])) r['id'] as String,
+        ];
+        for (final id in alt) {
+          db.execute('DELETE FROM bloecke WHERE konto = ? AND id = ?', [konto, id]);
+        }
+        return alt.length;
       });
 
   static String _iso(int ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();

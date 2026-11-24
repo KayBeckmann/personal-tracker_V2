@@ -19,6 +19,7 @@ class Verbindung {
     required this.schluessel,
     this.seq = 0,
     this.bekannt = 0,
+    this.name = 'Gerät',
   });
 
   final String server;
@@ -34,6 +35,9 @@ class Verbindung {
   /// Sendungen). Meldet der Server weniger, wurde er zurückgesetzt.
   final int bekannt;
 
+  /// Name dieses Geräts (für Konfliktkopien im Vault).
+  final String name;
+
   Verbindung mit({int? seq, int? bekannt}) => Verbindung(
         server: server,
         konto: konto,
@@ -42,6 +46,7 @@ class Verbindung {
         schluessel: schluessel,
         seq: seq ?? this.seq,
         bekannt: bekannt ?? this.bekannt,
+        name: name,
       );
 
   Map<String, dynamic> toJson() => {
@@ -53,6 +58,7 @@ class Verbindung {
         'schluessel': base64Encode(schluessel.bytes),
         'seq': seq,
         'bekannt': bekannt,
+        'name': name,
       };
 
   static Verbindung fromJson(Map<String, dynamic> j) => Verbindung(
@@ -63,6 +69,7 @@ class Verbindung {
         schluessel: Kontoschluessel(base64Decode(j['schluessel'] as String)),
         seq: j['seq'] as int,
         bekannt: (j['bekannt'] as int?) ?? 0,
+        name: (j['name'] as String?) ?? 'Gerät',
       );
 }
 
@@ -120,7 +127,7 @@ class SyncStand {
   /// Alle lokalen Datensätze vormerken (Erstverbindung, Neuaufbau).
   Future<int> allesVormerken({DatabaseClient? tx}) async {
     var n = 0;
-    for (final b in Ablage.bereiche) {
+    for (final b in [...Ablage.bereiche, 'vault']) {
       for (final id in await ablage.schluessel(b, tx: tx)) {
         await vormerken(b, id, tx: tx);
         n++;

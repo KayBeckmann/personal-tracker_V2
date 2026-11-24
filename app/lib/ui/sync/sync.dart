@@ -105,6 +105,19 @@ class SyncKarte extends ConsumerWidget {
             Padding(padding: const EdgeInsets.only(top: 4), child: Text(fehler, style: TextStyle(fontSize: 13, color: f.warnText))),
           const SizedBox(height: 6),
           Text('Automatisch bei geöffneter App: nach dem Entsperren, kurz nach Änderungen und alle 5 Minuten.', style: klein),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Vault: Dateien über ${ref.watch(bestandProvider).einstellungen.vaultMaxMiB} MiB lädt diese App nicht hoch.',
+                  key: const Key('vault-grenze'),
+                  style: klein,
+                ),
+              ),
+              TextButton(key: const Key('vault-grenze-aendern'), onPressed: () => _grenze(context, ref), child: const Text('Ändern')),
+            ],
+          ),
           const SizedBox(height: 14),
           Wrap(
             spacing: 8,
@@ -124,6 +137,35 @@ class SyncKarte extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _grenze(BuildContext context, WidgetRef ref) async {
+    final e = ref.read(bestandProvider).einstellungen;
+    final neu = await eingabeDialog<int>(
+      context,
+      start: ['${e.vaultMaxMiB}'],
+      builder: (ctx, f) => AlertDialog(
+        title: const Text('Größte Vault-Datei'),
+        content: TextField(
+          key: const Key('vault-grenze-feld'),
+          controller: f[0],
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'MiB', helperText: 'Größere Dateien bleiben auf dem Gerät (Standard 100).'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Abbrechen')),
+          FilledButton(
+            key: const Key('vault-grenze-ok'),
+            onPressed: () {
+              final n = int.tryParse(f[0].text.trim());
+              if (n != null && n > 0 && n <= 4096) Navigator.pop(ctx, n);
+            },
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
+    if (neu != null) await ref.read(sitzungProvider.notifier).speichereEinstellungen(e.kopie(vaultMaxMiB: neu));
   }
 
   Future<void> _trennen(BuildContext context, WidgetRef ref) async {

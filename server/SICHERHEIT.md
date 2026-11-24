@@ -1,6 +1,6 @@
 # Sync: Kryptografie und Bedrohungsmodell
 
-Stand: M3 (App 0.3.0, Server 1.0.0). Diese Datei soll eine unabhängige Prüfung möglich machen. Die Verfahren sind etabliert, die Bibliotheken auch (pointycastle in der App, `package:crypto` im Server). Eigene Kryptografie gibt es nicht. Der Code steht in `app/lib/core/sync/` und `server/lib/src/`. Die Tests liegen in `app/test/core/sync_test.dart` und `server/test/`.
+Stand: M4 (App 0.4.0, Obsidian-Plugin 0.1.0, Server 1.1.0). Diese Datei soll eine unabhängige Prüfung möglich machen. Die Verfahren sind etabliert, die Bibliotheken auch (pointycastle in der App, `package:crypto` im Server). Eigene Kryptografie gibt es nicht. Der Code steht in `app/lib/core/sync/`, `app/lib/core/vault/`, `obsidian/src/` und `server/lib/src/`. Die Tests liegen in `app/test/core/` (`sync_test.dart`, `vault_test.dart`, `protokoll_test.dart`), `obsidian/test/` und `server/test/`.
 
 ## Schlüssel
 
@@ -19,6 +19,7 @@ Abgeleitete Werte (HKDF-SHA256 mit eigenem `info` je Zweck):
   - `ptv2-sync-huelle-v1`: verschlüsselt den Kontoschlüssel zur **Recovery-Hülle**.
 - **Aus dem Kontoschlüssel:**
   - `ptv2-sync-objekt-id-v1`: HMAC-Schlüssel für die Objekt-IDs.
+  - `ptv2-vault-block-id-v1`: HMAC-Schlüssel für die Block-IDs großer Vault-Dateien (M4).
 - **Aus dem Kopplungscode:**
   - `ptv2-kopplung-slot-v1`: Slot auf dem Server.
   - `ptv2-kopplung-paket-v1`: verschlüsselt das Kopplungspaket mit Konto-ID und Kontoschlüssel.
@@ -53,15 +54,36 @@ Was der Server je Objekt speichert:
   2. Die anderen Geräte übernehmen den neuen Schlüssel beim nächsten Abgleich aus dem Schlüsselpaket.
 - **Gerät entfernen:** Der Token wird sofort ungültig.
 
+## Vault-Dateien (M4)
+
+Der Vertrag steht in [protokoll/VAULT.md](../protokoll/VAULT.md); App (Dart) und Obsidian-Plugin (TypeScript, WebCrypto) setzen ihn getrennt um. Gemeinsame Testvektoren (`protokoll/testvektoren.json`) halten beide gleich.
+
+- **Kleine Dateien:** Jede Datei ist ein gewöhnliches Sync-Objekt mit zufälliger, stabiler ID. Dateien bis 64 KiB stehen direkt darin.
+- **Große Dateien:**
+  - Sie liegen in Blöcken zu 1 MiB, aufgefüllt auf 4 KiB und mit AES-256-GCM unter dem Kontoschlüssel verschlüsselt. AAD ist `ptv2-vault-block|<id>`.
+  - Die Block-ID ist ein HMAC über den Klartext. Der Client prüft sie nach dem Entschlüsseln und die ganze Datei gegen ihren SHA-256.
+- **Was der Server zusätzlich sieht:**
+  - Anzahl und Größen der Blöcke (auf 4 KiB gerundet).
+  - Gleiche Blöcke: Zwei gleiche Dateien im selben Konto haben dieselben Block-IDs. Über Konten hinweg lässt sich das nicht vergleichen, weil der HMAC-Schlüssel je Konto verschieden ist.
+  - Wann Blöcke hochgeladen werden.
+  - Welcher Block zu welcher Datei gehört, steht nur im verschlüsselten Objekt.
+- **Secret-Sperre:** Vor dem Hochladen prüfen App und Plugin Textdateien mit gemeinsamen Mustern. Treffer bleiben lokal, bis der Eigentümer genau diese Fassung freigibt. Warnungen nennen Regel und Zeile, nie den Wert.
+  - Die Erkennung ist unvollständig: andere Formate, Binärdateien und Dateien über 10 MiB werden nicht geprüft.
+  - Verschlüsselung auf dem Server macht ein hochgeladenes Secret nicht harmlos. Es liegt danach auf allen Geräten des Kontos.
+- **Plugin-Code als Vertrauensgrenze:** Der Vault-Sync überträgt auch `.obsidian/plugins/`. Ein Gerät, das Plugin-Code ändert, ändert ihn für alle. Obsidian führt diesen Code mit vollem Zugriff auf den Vault aus, also auch auf die Schlüssel des Plugins.
+- **Schlüssel im Plugin:** Token und Kontoschlüssel liegen in der Schlüsselablage von Obsidian (`app.secretStorage`), nicht im Vault-Ordner. Andere Sync-Programme (Syncthing usw.) bekommen sie also nicht mit.
+- **Aufräumen:** Clients nennen dem Server alle noch benutzten Blöcke. Ein bösartiger Client des eigenen Kontos könnte so Blöcke löschen lassen. Jüngere Blöcke als 24 Stunden bleiben immer, und vor jedem Senden lädt ein Client fehlende Blöcke erneut hoch.
+
 ## Was der Server sieht
 
 - **Pro Konto:**
-  - zufällige ID, Anlagezeitpunkt, Anzahl und Größen der Objekte (auf 256 Byte gerundet);
+  - zufällige ID, Anlagezeitpunkt, Anzahl und Größen der Objekte (auf 256 Byte gerundet) und der Vault-Blöcke (auf 4 KiB gerundet);
   - Zeitpunkte und Reihenfolge der Änderungen;
   - Anzahl der Geräte mit Anlage- und „zuletzt gesehen“-Zeitpunkt;
   - IP-Adressen der Anfragen.
 - **Nicht:**
   - Inhalte, Titel, Beträge, Konten, Bereichsnamen und lokale IDs;
+  - Dateinamen, Ordner und Dateitypen des Vaults;
   - Gerätenamen (sie sind verschlüsselt);
   - Recovery-Schlüssel, Kontoschlüssel und Kopplungscodes.
 

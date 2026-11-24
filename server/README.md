@@ -46,6 +46,7 @@ Davor einen Reverse-Proxy mit TLS setzen. Läuft er auf derselben Maschine, zus�
 | `PT_HOST` / `PT_PORT` | `127.0.0.1` / `8743` | Adresse |
 | `PT_URSPRUNG` | `*` | erlaubter Ursprung der Web-App (CORS) |
 | `PT_HINTER_PROXY` | – | `1`: Client-IP für die Versuchsbegrenzung aus `X-Forwarded-For` |
+| `PT_MAX_KONTO_MB` | – (unbegrenzt) | Speicherplatz je Konto in MiB (Objekte und Dateiblöcke des Vault-Syncs) |
 
 ## Sicherung und Wiederherstellung (Server)
 

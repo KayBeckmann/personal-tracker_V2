@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:personal_tracker_sync/personal_tracker_sync.dart';
 import 'package:shelf/shelf.dart';
+import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
 final _r = Random(7);
@@ -23,6 +26,20 @@ class Client {
     ));
     final text = await antwort.readAsString();
     return (antwort.statusCode, text.isEmpty ? <String, dynamic>{} : (jsonDecode(text) as Map).cast<String, dynamic>());
+  }
+
+  Future<(int, Uint8List)> binaer(String methode, String pfad, [List<int>? body]) async {
+    final antwort = await h(Request(
+      methode,
+      Uri.parse('http://test$pfad'),
+      body: body,
+      headers: {if (token != null) 'authorization': 'Bearer $token', 'content-type': 'application/octet-stream'},
+    ));
+    final b = BytesBuilder();
+    await for (final t in antwort.read()) {
+      b.add(t);
+    }
+    return (antwort.statusCode, b.takeBytes());
   }
 }
 
@@ -240,5 +257,101 @@ void main() {
     final a = await h(Request('OPTIONS', Uri.parse('http://test/v1/objekte')));
     expect(a.statusCode, 204);
     expect(a.headers['access-control-allow-headers'], contains('authorization'));
+  });
+
+  test('Blöcke: schreiben, lesen, fehlend, nur im eigenen Konto', () async {
+    final (a, _) = await konto();
+    final (b, _) = await konto();
+    final id = hex(32);
+    final daten = List.generate(5000, (i) => i % 251);
+    expect((await a.binaer('PUT', '/v1/bloecke/$id', daten)).$1, 200);
+    // Nochmal derselbe Block: unverändert ok (Inhaltsadresse).
+    expect((await a.binaer('PUT', '/v1/bloecke/$id', daten)).$1, 200);
+    final (st, gelesen) = await a.binaer('GET', '/v1/bloecke/$id');
+    expect(st, 200);
+    expect(gelesen, daten);
+    expect((await b.binaer('GET', '/v1/bloecke/$id')).$1, 404);
+    final andere = hex(32);
+    final (_, j) = await a.anfrage('POST', '/v1/bloecke/fehlend', {'ids': [id, andere]});
+    expect(j['fehlend'], [andere]);
+    expect((await b.anfrage('POST', '/v1/bloecke/fehlend', {'ids': [id]})).$2['fehlend'], [id]);
+    final (_, info) = await a.anfrage('GET', '/v1/konto');
+    expect(info['bloecke'], 1);
+    expect(info['belegt'], greaterThanOrEqualTo(5000));
+    expect((await Client(h).binaer('GET', '/v1/bloecke/$id')).$1, 401);
+  });
+
+  test('Blöcke: Größe, IDs und Kontingent werden geprüft', () async {
+    final (a, _) = await konto();
+    expect((await a.binaer('PUT', '/v1/bloecke/${hex(32)}', List.filled(1024 * 1024 + 64 * 1024 + 1, 1))).$1, 413);
+    expect((await a.binaer('PUT', '/v1/bloecke/../x', [1])).$1, isNot(200));
+    expect((await a.binaer('PUT', '/v1/bloecke/ZZ${hex(30)}', [1])).$1, 400);
+    expect((await a.binaer('PUT', '/v1/bloecke/${hex(32)}', [])).$1, 400);
+    expect((await a.anfrage('POST', '/v1/bloecke/fehlend', {'ids': ['x']})).$1, 400);
+
+    final eng = syncHandler(s, k: const Konfiguration(maxKonto: 10000));
+    final c = Client(eng)..token = a.token;
+    expect((await c.binaer('PUT', '/v1/bloecke/${hex(32)}', List.filled(6000, 1))).$1, 200);
+    final (st, _) = await c.binaer('PUT', '/v1/bloecke/${hex(32)}', List.filled(6000, 2));
+    expect(st, 413);
+    final (st2, j) = await c.anfrage('POST', '/v1/objekte', {
+      'aenderungen': [
+        {'id': hex(32), 'basis': 0, 'aenderung': 'x', 'daten': 'D' * 5000},
+      ],
+    });
+    expect(st2, 413);
+    expect(j['fehler'], 'kontingent');
+  });
+
+  test('Blöcke aufräumen: nur unbenutzte und ältere als die Schonfrist', () async {
+    final (a, _) = await konto();
+    final alt1 = hex(32), alt2 = hex(32), jung = hex(32);
+    for (final id in [alt1, alt2, jung]) {
+      await a.binaer('PUT', '/v1/bloecke/$id', [1, 2, 3]);
+    }
+    s.db.execute('UPDATE bloecke SET erstellt = 0 WHERE id IN (?, ?)', [alt1, alt2]);
+    final (st, j) = await a.anfrage('POST', '/v1/bloecke/aufraeumen', {'behalten': [alt1]});
+    expect(st, 200);
+    expect(j['geloescht'], 1);
+    final (_, f) = await a.anfrage('POST', '/v1/bloecke/fehlend', {'ids': [alt1, alt2, jung]});
+    expect(f['fehlend'], [alt2]);
+  });
+
+  test('Konto löschen entfernt auch Blöcke', () async {
+    final (a, _) = await konto();
+    await a.binaer('PUT', '/v1/bloecke/${hex(32)}', [1]);
+    await a.anfrage('DELETE', '/v1/konto');
+    expect(s.db.select('SELECT count(*) n FROM bloecke').first['n'], 0);
+  });
+
+  test('Datenbank aus Schema 1 wird migriert, neuere abgelehnt', () {
+    final dir = Directory.systemTemp.createTempSync('ptsync');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final pfad = '${dir.path}/alt.db';
+    // Stand von Server 1.0.0 nachbauen.
+    final alt = sqlite3.open(pfad);
+    alt.execute('''
+      CREATE TABLE meta (schluessel TEXT PRIMARY KEY, wert TEXT NOT NULL);
+      CREATE TABLE konten (id TEXT PRIMARY KEY, recovery_hash TEXT NOT NULL UNIQUE, recovery_huelle TEXT NOT NULL,
+        schluessel_paket TEXT NOT NULL, seq INTEGER NOT NULL DEFAULT 0, erstellt INTEGER NOT NULL);
+      CREATE TABLE geraete (id TEXT PRIMARY KEY, konto TEXT NOT NULL REFERENCES konten(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE, name TEXT NOT NULL, erstellt INTEGER NOT NULL, zuletzt INTEGER NOT NULL);
+      CREATE TABLE objekte (konto TEXT NOT NULL REFERENCES konten(id) ON DELETE CASCADE, id TEXT NOT NULL,
+        seq INTEGER NOT NULL, aenderung TEXT NOT NULL, daten TEXT NOT NULL, PRIMARY KEY (konto, id));
+      CREATE INDEX objekte_seq ON objekte (konto, seq);
+      CREATE TABLE kopplungen (slot TEXT PRIMARY KEY, konto TEXT NOT NULL REFERENCES konten(id) ON DELETE CASCADE,
+        paket TEXT NOT NULL, ablauf INTEGER NOT NULL);
+      INSERT INTO meta VALUES ('instanz', 'abc');
+      INSERT INTO konten VALUES ('k1', 'h', 'H', 'P', 3, 0);
+      PRAGMA user_version = 1;
+    ''');
+    alt.dispose();
+    final neu = Speicher.oeffnen(pfad);
+    expect(neu.db.select('PRAGMA user_version').first.values.first, dbSchema);
+    expect(neu.kontoInfo('k1')['seq'], 3);
+    expect(neu.instanz, 'abc');
+    neu.db.execute('PRAGMA user_version = ${dbSchema + 1}');
+    neu.schliessen();
+    expect(() => Speicher.oeffnen(pfad), throwsA(isA<SpeicherFehler>()));
   });
 }

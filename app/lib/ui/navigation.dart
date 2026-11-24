@@ -9,6 +9,7 @@ enum Bereich {
   aufgaben('Aufgaben', Icons.task_alt),
   notizen('Notizen', Icons.notes_outlined),
   finanzen('Haushaltsbuch', Icons.account_balance_wallet_outlined),
+  vault('Vault', Icons.folder_open_outlined),
   einstellungen('Speicher & Sicherheit', Icons.lock_outline);
 
   const Bereich(this.titel, this.icon);
@@ -23,6 +24,10 @@ class BereichNotifier extends Notifier<Bereich> {
 }
 
 final bereichProvider = NotifierProvider<BereichNotifier, Bereich>(BereichNotifier.new);
+
+/// Bereiche in der Navigation; den Vault gibt es nur mit Sync (oder wenn
+/// schon Vault-Dateien da sind).
+List<Bereich> sichtbareBereiche({required bool vault}) => [for (final b in Bereich.values) if (b != Bereich.vault || vault) b];
 
 /// Beim Start gelesenes Farbschema (liegt unverschlüsselt, damit schon
 /// der Entsperrbildschirm passt).

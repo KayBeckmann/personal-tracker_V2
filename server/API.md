@@ -9,7 +9,7 @@ Dies ist die Schnittstelle zwischen den Apps (Android, Web, später Obsidian) un
 - **Anmeldung:** Jedes Gerät meldet sich mit `Authorization: Bearer <token>` an. Der Token hat 256 Bit Zufall. Der Server speichert davon nur den SHA-256.
 - **Anmeldung ist kein Leserecht:** Ein gültiger Token liefert nur Geheimtext. Den Kontoschlüssel kennt der Server nicht.
 - **Begrenzung:** Kontoanlage, Recovery-Anmeldung und das Einlösen eines Kopplungscodes sind pro IP-Adresse begrenzt (Standard: 20 in 10 Minuten).
-- **Größen:** Eine Anfrage darf höchstens 8 MiB groß sein, ein Objekt höchstens 1 MiB. Pro Schreibvorgang gehen höchstens 200 Änderungen durch, pro Abruf kommen höchstens 500 Objekte.
+- **Größen:** Eine Anfrage darf höchstens 8 MiB groß sein, ein Objekt höchstens 1 MiB, ein Block höchstens 1 MiB + 64 KiB. Pro Schreibvorgang gehen höchstens 200 Änderungen durch, pro Abruf kommen höchstens 500 Objekte.
 
 | Code | HTTP | Bedeutung |
 |------|------|-----------|
@@ -19,13 +19,14 @@ Dies ist die Schnittstelle zwischen den Apps (Android, Web, später Obsidian) un
 | `nicht-gefunden` | 404 | Kein Konto zum Recovery-Geheimnis oder Kopplungscode unbekannt bzw. abgelaufen |
 | `vorhanden` | 409 | Zu diesem Recovery-Schlüssel gibt es schon ein Konto |
 | `zu-gross` | 413 | Anfrage oder Feld zu groß |
+| `kontingent` | 413 | Speicherplatz des Kontos aufgebraucht (`PT_MAX_KONTO_MB`) |
 | `zu-viele` | 429 | Zu viele Versuche oder offene Kopplungen |
 
 ## Endpunkte
 
 ### `GET /v1/info`
 
-Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.0.0", "instanz": "<hex>"}`. Die Apps prüfen damit vor dem Verbinden, ob unter der Adresse ein passender Server läuft.
+Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.1.0", "instanz": "<hex>"}`. Die Apps prüfen damit vor dem Verbinden, ob unter der Adresse ein passender Server läuft.
 
 ### `POST /v1/konten` – Konto anlegen
 
@@ -53,7 +54,7 @@ Liefert:
 
 ```json
 {
-  "konto": "<hex>", "seq": 42, "objekte": 17,
+  "konto": "<hex>", "seq": 42, "objekte": 17, "bloecke": 3, "belegt": 123456,
   "recoveryHuelle": "…", "schluesselPaket": "…", "erstellt": "…",
   "geraet": "<eigene id>",
   "geraete": [{"id": "…", "name": "<Geheimtext>", "erstellt": "…", "zuletzt": "…"}]
@@ -111,7 +112,16 @@ Alle Änderungen laufen in einer Transaktion. Je Objekt gilt:
 
 Löschungen sind gewöhnliche Objekte, deren verschlüsselter Inhalt „gelöscht“ lautet. Der Server sieht keinen Unterschied zu anderen Objekten.
 
+### Blöcke (seit Server 1.1.0)
+
+Größere Dateien des Vault-Syncs (über 64 KiB) liegen nicht im Objekt, sondern in verschlüsselten Blöcken zu höchstens 1 MiB Klartext. Das Objekt der Datei nennt die Block-IDs; der Server weiß nicht, welcher Block zu welcher Datei gehört. Die Block-ID ist ein HMAC über den Klartext unter einem Kontoschlüssel, gleiche Blöcke werden also nur einmal gespeichert.
+
+- **`PUT /v1/bloecke/<id>`:** Rohdaten (`application/octet-stream`). Gibt es den Block schon, bleibt er unverändert.
+- **`GET /v1/bloecke/<id>`:** Rohdaten oder `404`.
+- **`POST /v1/bloecke/fehlend`:** `{"ids": [...]}` (höchstens 5000) → `{"fehlend": [...]}`. Vor dem Senden eines Objekts lädt der Client fehlende Blöcke hoch.
+- **`POST /v1/bloecke/aufraeumen`:** `{"behalten": [...]}` → `{"geloescht": n}`. Entfernt Blöcke des Kontos, die nicht in der Liste stehen **und** älter als 24 Stunden sind. Die Schonfrist schützt Blöcke, die ein anderes Gerät gerade hochlädt, bevor sein Objekt ankommt. Clients rufen das nur nach einem vollständigen Abgleich ohne Ausstehendes auf.
+
 ## Kompatibilität und Migration
 
-- **Datenbank:** Das Schema der Server-Datenbank steht in `PRAGMA user_version` (aktuell 1). Migrationen laufen beim Start in einer Transaktion. Eine neuere Datenbank lehnt ein älterer Server ab.
+- **Datenbank:** Das Schema der Server-Datenbank steht in `PRAGMA user_version` (aktuell 2; 2 ergänzt die Blöcke). Migrationen laufen beim Start in einer Transaktion. Eine neuere Datenbank lehnt ein älterer Server ab.
 - **Schemaversion der Inhalte:** Sie steht im verschlüsselten Umschlag und ist damit Sache der Apps. Eine App spielt nichts aus einer neueren Schemaversion ein und meldet dann „App aktualisieren“.

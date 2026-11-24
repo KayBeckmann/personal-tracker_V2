@@ -1,0 +1,4 @@
+.ptv2-vorschau details { margin: 0.4em 0; }
+.ptv2-vorschau summary { cursor: pointer; font-weight: 600; }
+.ptv2-liste { max-height: 14em; overflow: auto; font-size: var(--font-ui-smaller); font-family: var(--font-monospace); }
+.ptv2-warnung { color: var(--text-error); }

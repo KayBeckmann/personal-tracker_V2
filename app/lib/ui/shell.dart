@@ -6,12 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/dienste/erinnerungen.dart';
 import '../core/sitzung.dart';
 import '../core/sync/sync_dienst.dart';
+import '../core/vault/vault_dienst.dart';
 import 'aufgaben/aufgaben.dart';
 import 'einstellungen/einstellungen.dart';
 import 'finanzen/haushaltsbuch.dart';
 import 'navigation.dart';
 import 'notizen/notizen.dart';
 import 'termine/termine.dart';
+import 'vault/vault.dart';
 import 'thema.dart';
 import 'sync/sync.dart';
 import 'uebersicht/uebersicht.dart';
@@ -63,6 +65,7 @@ class _ShellState extends ConsumerState<Shell> {
       Bereich.aufgaben => const AufgabenSeite(),
       Bereich.notizen => const NotizenSeite(),
       Bereich.finanzen => const HaushaltsbuchSeite(),
+      Bereich.vault => const VaultSeite(),
       Bereich.einstellungen => const EinstellungenSeite(),
     };
 
@@ -123,6 +126,9 @@ class _ShellState extends ConsumerState<Shell> {
 
 String _markenUnter(WidgetRef ref) => ref.watch(syncProvider).verbunden ? 'V2 · SYNC' : 'V2 · LOKAL';
 
+List<Bereich> _bereiche(WidgetRef ref) =>
+    sichtbareBereiche(vault: ref.watch(syncProvider).verbunden || !ref.watch(vaultProvider).leer);
+
 class _Seitenleiste extends ConsumerWidget {
   const _Seitenleiste({required this.aktiv});
   final Bereich aktiv;
@@ -138,7 +144,7 @@ class _Seitenleiste extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(padding: const EdgeInsets.fromLTRB(10, 0, 10, 30), child: Markenzeichen(unter: _markenUnter(ref))),
-          for (final b in Bereich.values)
+          for (final b in _bereiche(ref))
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: _NavKnopf(bereich: b, aktiv: b == aktiv),
@@ -230,7 +236,7 @@ class _SchmaleLeiste extends ConsumerWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                for (final b in Bereich.values)
+                for (final b in _bereiche(ref))
                   Padding(padding: const EdgeInsets.only(right: 4), child: _NavKnopf(bereich: b, aktiv: b == aktiv, kompakt: true)),
               ],
             ),
