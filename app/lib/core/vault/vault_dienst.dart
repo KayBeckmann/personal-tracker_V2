@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -64,12 +65,17 @@ class VaultNotifier extends Notifier<VaultZustand> {
   VaultStand _stand() => VaultStand(ref.read(ablageProvider), _offen.dek);
   SitzungNotifier get _sitzung => ref.read(sitzungProvider.notifier);
 
+  int _ladeLauf = 0;
+
   Future<void> laden() async {
     if (ref.read(sitzungProvider) is! Entsperrt) return;
+    // Nur das zuletzt begonnene Laden zählt (sonst könnte ein älteres,
+    // später fertiges Laden einen neueren Stand überschreiben).
+    final lauf = ++_ladeLauf;
     final dateien = await _stand().alle()
       ..sort((a, b) => a.pfad.toLowerCase().compareTo(b.pfad.toLowerCase()));
     final ausgang = await SyncStand(ref.read(ablageProvider), _offen.dek).ausgang();
-    if (!ref.mounted || ref.read(sitzungProvider) is! Entsperrt) return;
+    if (!ref.mounted || ref.read(sitzungProvider) is! Entsperrt || lauf != _ladeLauf) return;
     state = VaultZustand(
       dateien: dateien,
       ausstehend: {
@@ -150,6 +156,20 @@ class VaultNotifier extends Notifier<VaultZustand> {
   Future<void> freigeben(VaultDatei d) async {
     await _stand().freigeben(d.id, d.sha256);
     unawaited(ref.read(syncProvider.notifier).abgleichen());
+  }
+
+  /// Alle Dateien als ZIP (fehlende Blöcke werden dafür geladen).
+  /// [fortschritt] bekommt (erledigt, gesamt).
+  Future<Uint8List> exportieren({void Function(int, int)? fortschritt}) async {
+    final a = Archive();
+    final alle = state.dateien;
+    for (var i = 0; i < alle.length; i++) {
+      final d = alle[i];
+      final bytes = await inhalt(d);
+      a.addFile(ArchiveFile.bytes(d.pfad, bytes)..lastModTime = d.geaendert.millisecondsSinceEpoch ~/ 1000);
+      fortschritt?.call(i + 1, alle.length);
+    }
+    return Uint8List.fromList(ZipEncoder().encode(a));
   }
 
   String _pruefePfad(String pfad, VaultDatei? alt) {
