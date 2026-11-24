@@ -19,6 +19,7 @@ import 'speicher/ablage.dart';
 import 'speicher/backup.dart';
 import 'speicher/rohdaten.dart';
 import 'speicher/schema.dart';
+import 'sync/sync_stand.dart';
 
 final ablageProvider = Provider<Ablage>((ref) => throw UnimplementedError('Ablage wird in main() geöffnet'));
 
@@ -92,6 +93,13 @@ class SitzungNotifier extends Notifier<Sitzung> {
 
   Ablage get _ablage => ref.read(ablageProvider);
   DateTime get _jetzt => ref.read(uhrProvider)();
+
+  /// Lokale Änderungen und das Einspielen vom Server laufen nacheinander.
+  final sperre = Sperre();
+
+  /// Mit einem Sync-Konto verbunden: Änderungen werden vorgemerkt.
+  bool _syncAktiv = false;
+  bool get syncAktiv => _syncAktiv;
 
   @override
   Sitzung build() {
@@ -168,8 +176,45 @@ class SitzungNotifier extends Notifier<Sitzung> {
       await _alleSchreiben(dek, roh, schema: aktuellesSchema);
     }
     final bestand = bestandAus(roh);
+    _syncAktiv = await SyncStand(_ablage, dek).verbindung() != null;
     state = Entsperrt(bund: bund, dek: dek, bestand: bestand, neuesPasswortNoetig: neuesPasswortNoetig, defekt: defekt);
     unawaited(_erinnerungenPlanen());
+  }
+
+  /// Liest den Bestand nach einem Abgleich neu aus der Ablage.
+  Future<void> neuLaden() async {
+    final s = state;
+    if (s is! Entsperrt) return;
+    final defekt = <String>[];
+    final roh = {for (final b in Ablage.bereiche) b: await _ablage.lesen(s.dek, b, defekt: defekt)};
+    final jetzt = state;
+    if (jetzt is! Entsperrt) return;
+    state = jetzt.mit(bestand: bestandAus(roh));
+    unawaited(_erinnerungenPlanen());
+  }
+
+  /// Sync-Verbindung hergestellt oder getrennt.
+  void syncAktivSetzen(bool an) => _syncAktiv = an;
+
+  /// Schlüsselbund ersetzen (Recovery-Schlüssel eines Sync-Kontos).
+  Future<void> bundErsetzen(Schluesselbund bund) async {
+    await _ablage.setzeMeta(metaBund, bund.toJson());
+    state = _offen.mit(bund: bund);
+  }
+
+  /// Frisches Gerät aus einem Sync-Konto: Schlüsselbund und Verbindung
+  /// speichern, entsperrt mit leerem Bestand starten; die Daten kommen
+  /// mit dem ersten Abgleich.
+  Future<void> einrichtenAusSync(Schluesselbund bund, Uint8List dek, Verbindung v) async {
+    final stand = SyncStand(_ablage, dek);
+    await _ablage.transaktion((tx) async {
+      await stand.loeschen(tx: tx);
+      await stand.setzeVerbindung(v, tx: tx);
+      await _ablage.setzeMeta(metaSchema, aktuellesSchema, tx: tx);
+      await _ablage.setzeMeta(metaBund, bund.toJson(), tx: tx);
+    });
+    _syncAktiv = true;
+    state = Entsperrt(bund: bund, dek: dek, bestand: const Bestand());
   }
 
   Future<void> sperren() async {
@@ -213,43 +258,56 @@ class SitzungNotifier extends Notifier<Sitzung> {
       await ref.read(biometrieProvider).loeschen();
     } catch (_) {}
     await _ablage.transaktion((tx) async {
-      for (final b in Ablage.bereiche) {
+      for (final b in [...Ablage.bereiche, ...Ablage.syncBereiche]) {
         await _ablage.leeren(b, tx: tx);
       }
       await _ablage.setzeMeta(metaBund, null, tx: tx);
       await _ablage.setzeMeta(metaSchema, null, tx: tx);
     });
+    _syncAktiv = false;
     state = const Einrichtung();
   }
 
   // ---------------------------------------------------------------------
   // Datensätze
 
-  Future<void> _schreiben(String bereich, String id, Map<String, dynamic> json, Bestand neu) async {
-    final s = _offen;
-    await _ablage.schreiben(s.dek, bereich, id, json);
-    state = (state as Entsperrt).mit(bestand: neu);
-  }
+  /// Schreibt Datensätze und merkt sie bei aktivem Sync vor. [neu] baut
+  /// den Bestand aus dem Stand *nach* dem Warten auf die Sperre, damit ein
+  /// gleichzeitiger Abgleich nicht überschrieben wird.
+  Future<void> _aendern(List<(String, String, Map<String, dynamic>?)> datensaetze, Bestand Function(Bestand) neu) =>
+      sperre.exklusiv(() async {
+        final s = _offen;
+        final bestand = neu(s.bestand);
+        final stand = _syncAktiv ? SyncStand(_ablage, s.dek) : null;
+        await _ablage.transaktion((tx) async {
+          for (final (bereich, id, json) in datensaetze) {
+            if (json == null) {
+              await _ablage.loeschen(bereich, id, tx: tx);
+            } else {
+              await _ablage.schreiben(s.dek, bereich, id, json, tx: tx);
+            }
+            await stand?.vormerken(bereich, id, tx: tx);
+          }
+        });
+        state = _offen.mit(bestand: bestand);
+      });
 
-  Future<void> _loeschen(String bereich, List<String> ids, Bestand neu) async {
-    await _ablage.transaktion((tx) async {
-      for (final id in ids) {
-        await _ablage.loeschen(bereich, id, tx: tx);
-      }
-    });
-    state = _offen.mit(bestand: neu);
-  }
+  Future<void> _schreiben(String bereich, String id, Map<String, dynamic> json, Bestand Function(Bestand) neu) =>
+      _aendern([(bereich, id, json)], neu);
+
+  Future<void> _loeschen(String bereich, List<String> ids, Bestand Function(Bestand) neu) =>
+      _aendern([for (final id in ids) (bereich, id, null)], neu);
 
   Bestand get _b => _offen.bestand;
 
   Future<void> speichereTermin(Termin t) async {
     final x = t.kopie(geaendert: _jetzt.toUtc());
-    await _schreiben('termine', x.id, x.toJson(), _b.kopie(termine: {..._b.termine, x.id: x}));
+    await _schreiben('termine', x.id, x.toJson(), (b) => b.kopie(termine: {...b.termine, x.id: x}));
     unawaited(_erinnerungenPlanen());
   }
 
   Future<void> loescheTermin(String id) async {
-    await _loeschen('termine', [id], _b.kopie(termine: {..._b.termine}..remove(id)));
+    await _loeschen('termine', [id], (b) => b.kopie(termine: {...b.termine}..remove(id)));
     unawaited(_erinnerungenPlanen());
   }
 
@@ -259,12 +317,12 @@ class SitzungNotifier extends Notifier<Sitzung> {
 
   Future<void> speichereAufgabe(Aufgabe a) async {
     final x = a.kopie(geaendert: _jetzt.toUtc());
-    await _schreiben('aufgaben', x.id, x.toJson(), _b.kopie(aufgaben: {..._b.aufgaben, x.id: x}));
+    await _schreiben('aufgaben', x.id, x.toJson(), (b) => b.kopie(aufgaben: {...b.aufgaben, x.id: x}));
     unawaited(_erinnerungenPlanen());
   }
 
   Future<void> loescheAufgabe(String id) async {
-    await _loeschen('aufgaben', [id], _b.kopie(aufgaben: {..._b.aufgaben}..remove(id)));
+    await _loeschen('aufgaben', [id], (b) => b.kopie(aufgaben: {...b.aufgaben}..remove(id)));
     unawaited(_erinnerungenPlanen());
   }
 
@@ -278,14 +336,14 @@ class SitzungNotifier extends Notifier<Sitzung> {
 
   Future<void> speichereNotiz(Notiz n) async {
     final x = n.kopie(geaendert: _jetzt.toUtc());
-    await _schreiben('notizen', x.id, x.toJson(), _b.kopie(notizen: {..._b.notizen, x.id: x}));
+    await _schreiben('notizen', x.id, x.toJson(), (b) => b.kopie(notizen: {...b.notizen, x.id: x}));
   }
 
-  Future<void> loescheNotiz(String id) => _loeschen('notizen', [id], _b.kopie(notizen: {..._b.notizen}..remove(id)));
+  Future<void> loescheNotiz(String id) => _loeschen('notizen', [id], (b) => b.kopie(notizen: {...b.notizen}..remove(id)));
 
   Future<void> speichereKonto(Konto k) async {
     final x = k.kopie(geaendert: _jetzt.toUtc());
-    await _schreiben('konten', x.id, x.toJson(), _b.kopie(konten: {..._b.konten, x.id: x}));
+    await _schreiben('konten', x.id, x.toJson(), (b) => b.kopie(konten: {...b.konten, x.id: x}));
   }
 
   /// Nur ohne Buchungen/Pläne löschbar — sonst archivieren.
@@ -294,12 +352,12 @@ class SitzungNotifier extends Notifier<Sitzung> {
 
   Future<void> loescheKonto(String id) async {
     if (!kontoLoeschbar(id)) throw StateError('Konto hat Buchungen — bitte archivieren.');
-    await _loeschen('konten', [id], _b.kopie(konten: {..._b.konten}..remove(id)));
+    await _loeschen('konten', [id], (b) => b.kopie(konten: {...b.konten}..remove(id)));
   }
 
   Future<void> speichereBuchung(Buchung b) async {
     final x = b.kopie(geaendert: _jetzt.toUtc());
-    await _schreiben('buchungen', x.id, x.toJson(), _b.kopie(buchungen: {..._b.buchungen, x.id: x}));
+    await _schreiben('buchungen', x.id, x.toJson(), (b) => b.kopie(buchungen: {...b.buchungen, x.id: x}));
   }
 
   /// Löscht eine Buchung, bei Umbuchungen beide Hälften.
@@ -307,7 +365,7 @@ class SitzungNotifier extends Notifier<Sitzung> {
     final b = _b.buchungen[id];
     if (b == null) return;
     final ids = [id, if (_b.gegenbuchung(b) case final g?) g.id];
-    await _loeschen('buchungen', ids, _b.kopie(buchungen: {..._b.buchungen}..removeWhere((k, _) => ids.contains(k))));
+    await _loeschen('buchungen', ids, (b) => b.kopie(buchungen: {...b.buchungen}..removeWhere((k, _) => ids.contains(k))));
   }
 
   /// Legt eine Umbuchung an oder ändert sie: Abgang auf [vonKonto]
@@ -332,20 +390,15 @@ class SitzungNotifier extends Notifier<Sitzung> {
       Buchung(id: abgang?.id ?? neueId(), kontoId: vonKonto, datum: datum, empfaenger: name, betragCent: -betragCent.abs(), status: status, bemerkung: bemerkung, umbuchungId: uid, geaendert: jetzt),
       Buchung(id: zugang?.id ?? neueId(), kontoId: nachKonto, datum: datum, empfaenger: name, betragCent: betragCent.abs(), status: status, bemerkung: bemerkung, umbuchungId: uid, geaendert: jetzt),
     ];
-    await _ablage.transaktion((tx) async {
-      for (final b in neu) {
-        await _ablage.schreiben(_offen.dek, 'buchungen', b.id, b.toJson(), tx: tx);
-      }
-    });
-    state = _offen.mit(bestand: _b.kopie(buchungen: {..._b.buchungen, for (final b in neu) b.id: b}));
+    await _aendern([for (final b in neu) ('buchungen', b.id, b.toJson())], (x) => x.kopie(buchungen: {...x.buchungen, for (final b in neu) b.id: b}));
   }
 
   Future<void> speicherePlan(Plan p) async {
     final x = p.kopie(geaendert: _jetzt.toUtc());
-    await _schreiben('plaene', x.id, x.toJson(), _b.kopie(plaene: {..._b.plaene, x.id: x}));
+    await _schreiben('plaene', x.id, x.toJson(), (b) => b.kopie(plaene: {...b.plaene, x.id: x}));
   }
 
-  Future<void> loeschePlan(String id) => _loeschen('plaene', [id], _b.kopie(plaene: {..._b.plaene}..remove(id)));
+  Future<void> loeschePlan(String id) => _loeschen('plaene', [id], (b) => b.kopie(plaene: {...b.plaene}..remove(id)));
 
   /// Bucht das Vorkommen eines Plans in [monat] (Betrag/Datum anpassbar).
   Future<void> planBuchen(Plan p, Monat monat, {int? betragCent, DateTime? datum}) => speichereBuchung(Buchung(
@@ -367,9 +420,44 @@ class SitzungNotifier extends Notifier<Sitzung> {
       );
 
   Future<void> speichereEinstellungen(Einstellungen e) async {
-    await _schreiben('einstellungen', 'app', e.toJson(), _b.kopie(einstellungen: e));
+    await _schreiben('einstellungen', 'app', e.toJson(), (b) => b.kopie(einstellungen: e));
     unawaited(_erinnerungenPlanen());
   }
+
+  // ---------------------------------------------------------------------
+  // Konflikte aus dem Sync
+
+  /// Die Konflikt-Fassung übernehmen: Sie ersetzt den aktuellen Datensatz
+  /// (bei Umbuchungen auch die Gegenhälfte, wenn sie ebenfalls einen
+  /// Konflikt hat). Wirft, wenn das Ergebnis nicht stimmig wäre (z. B.
+  /// Buchung auf ein inzwischen gelöschtes Konto).
+  Future<void> konfliktUebernehmen(String id) async {
+    final k = _b.konflikte[id];
+    if (k == null) return;
+    final uid = k.bereich == 'buchungen' ? k.daten['umbuchungId'] : null;
+    final alle = [
+      k,
+      if (uid != null) ..._b.konflikte.values.where((x) => x.id != k.id && x.bereich == 'buchungen' && x.daten['umbuchungId'] == uid),
+    ];
+    final jetzt = _jetzt.toUtc().toIso8601String();
+    final aenderungen = [
+      for (final x in alle) ...[
+        (x.bereich, x.originalId, <String, dynamic>{...x.daten, 'id': x.originalId, 'geaendert': jetzt}),
+        ('konflikte', x.id, null),
+      ],
+    ];
+    await _aendern(aenderungen, (b) {
+      final roh = rohdatenVon(b);
+      for (final (bereich, rid, json) in aenderungen) {
+        roh[bereich] = [...roh[bereich]!.where((d) => d['id'] != rid), ?json];
+      }
+      return bestandAus(roh);
+    });
+    if (alle.any((x) => x.bereich == 'termine' || x.bereich == 'aufgaben')) unawaited(_erinnerungenPlanen());
+  }
+
+  /// Die Konflikt-Fassung verwerfen; der aktuelle Datensatz bleibt.
+  Future<void> konfliktVerwerfen(String id) => _loeschen('konflikte', [id], (b) => b.kopie(konflikte: {...b.konflikte}..remove(id)));
 
   // ---------------------------------------------------------------------
   // Erinnerungen
@@ -434,7 +522,10 @@ class SitzungNotifier extends Notifier<Sitzung> {
 
   /// Laufende Installation: ersetzt alle Daten. Passwort und Fingerabdruck
   /// bleiben; künftig gilt der Recovery-Schlüssel der Sicherung.
+  /// Mit Sync nicht möglich: erst trennen (sonst würden die ersetzten
+  /// Daten wieder vom Server eingespielt).
   Future<void> wiederherstellenErsetzen(Bestand bestand, RecoverySchluessel r) async {
+    if (_syncAktiv) throw StateError('Bitte zuerst den Sync trennen.');
     final s = _offen;
     final bund = s.bund.mitNeuemRecovery(s.dek, r);
     await _alleSchreiben(s.dek, rohdatenVon(bestand), schema: aktuellesSchema, bund: bund);

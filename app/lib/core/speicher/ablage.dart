@@ -15,7 +15,11 @@ class Ablage {
   final Database db;
 
   static const dateiname = 'personal_tracker_v2.db';
-  static const bereiche = ['termine', 'aufgaben', 'notizen', 'konten', 'buchungen', 'plaene', 'einstellungen'];
+  static const bereiche = ['termine', 'aufgaben', 'notizen', 'konten', 'buchungen', 'plaene', 'konflikte', 'einstellungen'];
+
+  /// Zustand des Syncs (Verbindung, Revisionen, ausstehende Änderungen);
+  /// ebenfalls verschlüsselt, aber nicht Teil von Sicherungen.
+  static const syncBereiche = ['sync', 'sync_ausgang'];
 
   static final _meta = StoreRef<String, Object?>('meta');
 
@@ -34,9 +38,9 @@ class Ablage {
   /// Alle Datensätze eines Bereichs entschlüsselt. Nicht lesbare Datensätze
   /// (falscher Schlüssel/beschädigt) landen in [defekt], statt still zu
   /// verschwinden.
-  Future<List<Map<String, dynamic>>> lesen(Uint8List dek, String bereich, {List<String>? defekt}) async {
+  Future<List<Map<String, dynamic>>> lesen(Uint8List dek, String bereich, {List<String>? defekt, DatabaseClient? tx}) async {
     final ergebnis = <Map<String, dynamic>>[];
-    for (final r in await _bereich(bereich).find(db)) {
+    for (final r in await _bereich(bereich).find(tx ?? db)) {
       final g = Geheimtext.fromJson(r.value);
       final klar = g == null ? null : AesGcm.entschluesseln(dek, g, aad: '$bereich/${r.key}');
       if (klar == null) {
@@ -47,6 +51,17 @@ class Ablage {
     }
     return ergebnis;
   }
+
+  /// Ein Datensatz entschlüsselt; `null`, wenn es ihn nicht gibt oder er
+  /// nicht lesbar ist.
+  Future<Map<String, dynamic>?> lesenEinzeln(Uint8List dek, String bereich, String id, {DatabaseClient? tx}) async {
+    final g = Geheimtext.fromJson(await _bereich(bereich).record(id).get(tx ?? db));
+    final klar = g == null ? null : AesGcm.entschluesseln(dek, g, aad: '$bereich/$id');
+    return klar == null ? null : (jsonDecode(utf8.decode(klar)) as Map).cast<String, dynamic>();
+  }
+
+  /// Schlüssel aller Datensätze eines Bereichs (ohne Entschlüsseln).
+  Future<List<String>> schluessel(String bereich, {DatabaseClient? tx}) => _bereich(bereich).findKeys(tx ?? db);
 
   Future<void> schreiben(Uint8List dek, String bereich, String id, Map<String, dynamic> daten, {DatabaseClient? tx}) {
     final g = AesGcm.verschluesseln(dek, Uint8List.fromList(utf8.encode(jsonEncode(daten))), aad: '$bereich/$id');

@@ -4,7 +4,8 @@
 ///
 /// - 1: M1 (Termine, Notizen, Haushaltsbuch)
 /// - 2: M2 (zusätzlich Aufgaben)
-const aktuellesSchema = 2;
+/// - 3: M3 (zusätzlich Konflikt-Fassungen aus dem Sync)
+const aktuellesSchema = 3;
 
 /// Rohdaten: Bereich → Datensätze (Klartext-JSON).
 typedef Rohdaten = Map<String, List<Map<String, dynamic>>>;
@@ -12,12 +13,16 @@ typedef Rohdaten = Map<String, List<Map<String, dynamic>>>;
 /// Migration von Version `n` auf `n + 1`.
 typedef Migration = Rohdaten Function(Rohdaten daten);
 
-const Map<int, Migration> migrationen = {1: _v1zuV2};
+const Map<int, Migration> migrationen = {1: _v1zuV2, 2: _v2zuV3};
 
 /// Schema 2 ergänzt nur den Bereich „aufgaben“; vorhandene Datensätze
 /// bleiben unverändert. Die Versionsnummer steigt trotzdem, damit eine
 /// M1-App eine M2-Sicherung ablehnt, statt Aufgaben still zu verlieren.
 Rohdaten _v1zuV2(Rohdaten d) => {...d, 'aufgaben': d['aufgaben'] ?? []};
+
+/// Schema 3 ergänzt den Bereich „konflikte“ (abweichende Fassungen aus dem
+/// Sync); sonst unverändert.
+Rohdaten _v2zuV3(Rohdaten d) => {...d, 'konflikte': d['konflikte'] ?? []};
 
 class SchemaFehler implements Exception {
   SchemaFehler(this.meldung);

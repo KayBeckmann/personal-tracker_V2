@@ -1,5 +1,6 @@
 import 'aufgabe.dart';
 import 'finanzen.dart';
+import 'konflikt.dart';
 import 'notiz.dart';
 import 'termin.dart';
 
@@ -12,6 +13,7 @@ class Bestand {
     this.konten = const {},
     this.buchungen = const {},
     this.plaene = const {},
+    this.konflikte = const {},
     this.einstellungen = const Einstellungen(),
   });
 
@@ -21,6 +23,9 @@ class Bestand {
   final Map<String, Konto> konten;
   final Map<String, Buchung> buchungen;
   final Map<String, Plan> plaene;
+
+  /// Abweichende Fassungen aus dem Abgleich (siehe [Konflikt]).
+  final Map<String, Konflikt> konflikte;
   final Einstellungen einstellungen;
 
   Bestand kopie({
@@ -30,6 +35,7 @@ class Bestand {
     Map<String, Konto>? konten,
     Map<String, Buchung>? buchungen,
     Map<String, Plan>? plaene,
+    Map<String, Konflikt>? konflikte,
     Einstellungen? einstellungen,
   }) =>
       Bestand(
@@ -39,6 +45,7 @@ class Bestand {
         konten: konten ?? this.konten,
         buchungen: buchungen ?? this.buchungen,
         plaene: plaene ?? this.plaene,
+        konflikte: konflikte ?? this.konflikte,
         einstellungen: einstellungen ?? this.einstellungen,
       );
 
