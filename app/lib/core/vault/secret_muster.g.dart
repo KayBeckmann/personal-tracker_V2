@@ -2,8 +2,8 @@
 // Erzeugen: siehe app/README.md, Abschnitt Vault.
 const secretMusterJson = r'''{
   "version": 1,
-  "hinweis": "Gemeinsame Secret-Muster für App und Obsidian-Plugin. Eine Regel meldet nur Name und Zeile, nie den gefundenen Wert. Platzhalter schließt Werte aus, die offensichtlich keine echten Geheimnisse sind.",
-  "platzhalter": "^(?:\\*+|x{3,}|\\.{3,}|<[^>]*>|\\[[^\\]]*\\]|\\{\\{.*\\}\\}|\\$\\{?[A-Za-z_][A-Za-z0-9_]*\\}?|\\$\\(.*|changeme|example\\S*|beispiel\\S*|platzhalter|your[_-]\\S*|dein[_-]?\\S*|todo|none|null|undefined|true|false|process\\.env\\S*)$",
+  "hinweis": "Gemeinsame Secret-Muster für App und Obsidian-Plugin. Eine Regel meldet nur Name und Zeile, nie den gefundenen Wert. Platzhalter schließt Werte aus, die offensichtlich keine echten Geheimnisse sind (auch Programmcode wie `e.token` oder `getSecret(…)`).",
+  "platzhalter": "^(?:\\*+|x{3,}|\\.{3,}|<[^>]*>|\\[[^\\]]*\\]|\\{\\{.*\\}\\}|\\$\\{?[A-Za-z_][A-Za-z0-9_]*\\}?|\\$\\(.*|changeme|example\\S*|beispiel\\S*|platzhalter|your[_-]\\S*|dein[_-]?\\S*|todo|none|null|undefined|true|false|process\\.env\\S*|[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)+(?:\\(.*)?[,;)]*|[A-Za-z_$][\\w$.]*\\(.*)$",
   "regeln": [
     {"name": "Privater Schlüssel", "muster": "-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"},
     {"name": "AWS-Zugangsschlüssel", "muster": "\\b(?:AKIA|ASIA)[0-9A-Z]{16}\\b"},

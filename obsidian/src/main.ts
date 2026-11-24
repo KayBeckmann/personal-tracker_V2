@@ -326,7 +326,7 @@ class VorschauModal extends Modal {
     liste(el, `Größer als ${this.plugin.einstellungen.maxMiB} MiB (bleiben lokal)`, v.zuGross, true);
     liste(el, 'Nicht übertragen', v.ausgenommen.map((a) => `${a.pfad} – ${a.grund}`));
     if (v.nichtGeprueft > 0) {
-      el.createEl('p', { text: `${v.nichtGeprueft} Dateien sind binär oder sehr groß und wurden nicht auf Secrets geprüft. Die Erkennung arbeitet mit Mustern und kann Secrets übersehen, auch in Plugin-Einstellungen. Bitte selbst durchsehen, was in .obsidian/plugins liegt.` });
+      el.createEl('p', { text: `${v.nichtGeprueft === 1 ? '1 Datei ist' : `${v.nichtGeprueft} Dateien sind`} binär oder sehr groß und wurde${v.nichtGeprueft === 1 ? '' : 'n'} nicht auf Secrets geprüft. Die Erkennung arbeitet mit Mustern und kann Secrets übersehen, auch in Plugin-Einstellungen. Bitte selbst durchsehen, was in .obsidian/plugins liegt.` });
     }
 
     let geprueft = false;

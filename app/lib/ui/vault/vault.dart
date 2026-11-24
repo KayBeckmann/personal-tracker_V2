@@ -414,7 +414,10 @@ class _VaultDateiSeiteState extends ConsumerState<VaultDateiSeite> {
               ],
             );
     } else if (_d.istBild) {
-      inhalt = ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(b, key: const Key('vault-bild'), fit: BoxFit.contain));
+      // Nicht über die eigene Größe hinaus vergrößern.
+      inhalt = Center(
+        child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(b, key: const Key('vault-bild'), fit: BoxFit.scaleDown)),
+      );
     } else {
       inhalt = Karte(
         child: Column(
