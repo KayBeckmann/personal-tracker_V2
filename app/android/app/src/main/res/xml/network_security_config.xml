@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nur verschlüsselte Verbindungen (HTTPS), Systemzertifikate.
+     Ausnahme: localhost für einen Sync-Server auf diesem Gerät bzw. per
+     „adb reverse“ (Tests). Die App prüft das zusätzlich selbst. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'kdf.dart';
 import 'krypto.dart';
 import 'recovery_schluessel.dart';
+import '../sync/sync_krypto.dart' show RecoveryTeile;
 
 /// Unverschlüsselt gespeicherte Metadaten zum Entsperren: der zufällige
 /// Datenschlüssel (DEK) liegt nur in zwei Hüllen — mit dem Passwort und
@@ -46,6 +47,16 @@ class Schluesselbund {
   static Future<({Schluesselbund bund, Uint8List dek})> anlegen(
     String passwort,
     RecoverySchluessel recovery, {
+    KdfParameter? kdf,
+    Uint8List? dek,
+  }) =>
+      anlegenMitTeilen(passwort, RecoveryTeile.von(recovery), kdf: kdf, dek: dek);
+
+  /// Wie [anlegen], aber mit den Recovery-Teilen eines Sync-Kontos (ein
+  /// gekoppeltes Gerät kennt den Recovery-Schlüssel selbst nicht).
+  static Future<({Schluesselbund bund, Uint8List dek})> anlegenMitTeilen(
+    String passwort,
+    RecoveryTeile recovery, {
     KdfParameter? kdf,
     Uint8List? dek,
   }) async {
@@ -95,7 +106,10 @@ class Schluesselbund {
   }
 
   /// Neuer Recovery-Schlüssel für denselben DEK.
-  Schluesselbund mitNeuemRecovery(Uint8List dek, RecoverySchluessel r) => _kopie(
+  Schluesselbund mitNeuemRecovery(Uint8List dek, RecoverySchluessel r) => mitRecoveryTeilen(dek, RecoveryTeile.von(r));
+
+  /// Recovery-Schlüssel eines Sync-Kontos übernehmen.
+  Schluesselbund mitRecoveryTeilen(Uint8List dek, RecoveryTeile r) => _kopie(
         huelleRecovery: AesGcm.verschluesseln(r.huellenSchluessel, dek, aad: _aadRecovery),
         huelleBackup: AesGcm.verschluesseln(dek, r.backupSchluessel, aad: _aadBackup),
         recoveryKennung: r.kennung,

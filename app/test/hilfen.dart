@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
+import 'package:http/http.dart' as http;
 import 'package:personal_tracker/core/dienste/biometrie.dart';
 import 'package:personal_tracker/core/dienste/erinnerungen.dart';
 import 'package:personal_tracker/core/krypto/kdf.dart';
@@ -9,6 +10,7 @@ import 'package:personal_tracker/core/krypto/schluesselbund.dart';
 import 'package:personal_tracker/core/modell/bestand.dart';
 import 'package:personal_tracker/core/sitzung.dart';
 import 'package:personal_tracker/core/speicher/ablage.dart';
+import 'package:personal_tracker/core/sync/sync_dienst.dart';
 import 'package:personal_tracker/ui/dateien.dart';
 import 'package:sembast/sembast_memory.dart';
 
@@ -62,10 +64,13 @@ class FakeDateien implements Dateien {
 
 /// Simuliert eine Installation: gleiche Fabrik + Name = gleiches Gerät.
 class TestGeraet {
-  TestGeraet({DatabaseFactory? fabrik, this.name = 'test.db'}) : fabrik = fabrik ?? newDatabaseFactoryMemory();
+  TestGeraet({DatabaseFactory? fabrik, this.name = 'test.db', this.client}) : fabrik = fabrik ?? newDatabaseFactoryMemory();
 
   final DatabaseFactory fabrik;
   final String name;
+
+  /// Verbindung zum (Test-)Sync-Server; ohne gibt es keinen Netzzugriff.
+  final http.Client? client;
   final biometrie = FakeBiometrie();
   final erinnerungen = FakeErinnerungen();
   final dateien = FakeDateien();
@@ -88,5 +93,8 @@ class TestGeraet {
         kdfProvider.overrideWithValue(testKdf),
         uhrProvider.overrideWithValue(() => jetzt),
         dateienProvider.overrideWithValue(dateien),
+        // Automatischer Abgleich aus: Tests gleichen ausdrücklich ab.
+        syncTaktProvider.overrideWithValue((nachAenderung: Duration.zero, regelmaessig: Duration.zero)),
+        if (client != null) httpClientProvider.overrideWithValue(client!),
       ];
 }

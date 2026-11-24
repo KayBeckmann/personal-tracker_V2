@@ -6,6 +6,7 @@ import '../../core/finanzen/prognose.dart';
 import '../../core/kalender/vorkommen.dart';
 import '../../core/modell/datum.dart';
 import '../../core/sitzung.dart';
+import '../../core/sync/sync_dienst.dart';
 import '../aufgaben/aufgaben.dart';
 import '../bausteine.dart';
 import '../erfassen.dart';
@@ -13,6 +14,7 @@ import '../finanzen/prognose_anzeige.dart';
 import '../format.dart';
 import '../navigation.dart';
 import '../notizen/notiz_editor.dart';
+import '../sync/sync.dart';
 import '../termine/termin_formular.dart';
 import '../thema.dart';
 
@@ -37,6 +39,7 @@ class UebersichtSeite extends ConsumerWidget {
     final p = berechnePrognose(b, jetzt);
     final gehe = ref.read(bereichProvider.notifier).gehe;
     final letzte = b.einstellungen.letzteSicherung;
+    final sync = ref.watch(syncProvider);
     final sicherungAlt = letzte == null ? b.anzahlDatensaetze > 0 : jetzt.difference(letzte).inDays > 30;
 
     return Column(
@@ -61,13 +64,22 @@ class UebersichtSeite extends ConsumerWidget {
                   'Bitte eine Sicherung prüfen.',
             ),
           ),
+        const KonfliktHinweis(),
         if (sicherungAlt)
           Hinweis(
             key: const Key('hinweis-sicherung'),
             warnung: true,
             fett: letzte == null ? 'Noch keine Sicherung' : 'Letzte Sicherung ${vorWieLanger(letzte, jetzt)}',
-            text: 'Die Daten liegen nur auf diesem Gerät. Eine verschlüsselte Sicherung schützt vor Verlust.',
+            text: sync.verbunden
+                ? 'Der Sync ersetzt keine Sicherung: Eine verschlüsselte Datei schützt auch vor Fehlern auf dem Server.'
+                : 'Die Daten liegen nur auf diesem Gerät. Eine verschlüsselte Sicherung schützt vor Verlust.',
             aktion: TextButton(onPressed: () => gehe(Bereich.einstellungen), child: const Text('Sichern')),
+          )
+        else if (sync.verbunden)
+          Hinweis(
+            fett: 'Verschlüsselt synchronisiert',
+            warnung: sync.fehler != null,
+            text: '${syncKurztext(sync, jetzt)}${letzte == null ? '' : ' · letzte Sicherung ${vorWieLanger(letzte, jetzt)}'}.',
           )
         else
           Hinweis(

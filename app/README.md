@@ -1,6 +1,8 @@
 # Personal Tracker V2 – App (Flutter, Android + Web)
 
-Stand **M2**: Solo-Tracker, dauerhaft ohne Konto, Server oder Internet nutzbar.
+Stand **M3**: Solo-Tracker, dauerhaft ohne Konto, Server oder Internet nutzbar;
+auf Wunsch Ende-zu-Ende-verschlüsselter Sync mit dem eigenen Server
+([server/](../server/README.md)).
 Termine (mit Wiederholung und Erinnerung), Aufgaben (Fälligkeit, Wichtigkeit,
 Wiederholung nach dem Abhaken, Erinnerung), Markdown-Notizen und Haushaltsbuch
 (Konten, Buchungen, Umbuchungen, wiederkehrende Posten, Monatsvorschau).
@@ -33,7 +35,9 @@ flutter build apk --release --split-per-abi   # braucht android/key.properties
   `If-Modified-Since` „unverändert“ und der Browser sieht kein Update).
 - **Android:** Die Release-Signatur kommt aus `android/key.properties` (git-ignoriert,
   gleiches Schema wie bei WerkkernERP). Ohne die Datei bricht der Release-Build ab.
-  Die App hat **keine INTERNET-Berechtigung**.
+  INTERNET-Berechtigung nur für den freiwilligen Sync; ohne Verbindung stellt
+  die App keine Netzanfragen. Unverschlüsseltes HTTP ist nur zu `localhost`
+  erlaubt (`res/xml/network_security_config.xml`).
 
 ## Datenschutz und Sicherheit
 
@@ -45,15 +49,18 @@ flutter build apk --release --split-per-abi   # braucht android/key.properties
 | Sperre | Beim Start, per Knopf und nach 5 Min im Hintergrund; offene Seiten werden geschlossen |
 | Sicherung | `.ptbackup`: JSON-Kopf (als AAD gebunden) + AES-GCM-Inhalt mit Schlüssel aus dem Recovery-Schlüssel; Einlesen mit Vorschau, in frischer oder laufender Installation |
 | Erinnerungen | Termine und Aufgaben. Android: im System geplant (30 Tage, max. 60), ohne Titel, sofern nicht eingestellt. Web: nur bei geöffneter App |
-| Schema | `lib/core/speicher/schema.dart`: Version + Migrationen (1 = M1, 2 = M2 mit Aufgaben); neuere Stände werden abgelehnt, Migration in einer Transaktion |
+| Schema | `lib/core/speicher/schema.dart`: Version + Migrationen (1 = M1, 2 = M2 mit Aufgaben, 3 = M3 mit Konflikt-Fassungen); neuere Stände werden abgelehnt, Migration in einer Transaktion |
+| Sync | `lib/core/sync/`: Kontoschlüssel (256 Bit) verschlüsselt jeden Datensatz vor dem Upload; Objekt-IDs sind HMACs; Kopplung per Einmal-Code, Recovery über den Recovery-Schlüssel. Details: [server/SICHERHEIT.md](../server/SICHERHEIT.md) |
 
-Unverschlüsselt liegen nur Schlüsselbund, Schemaversion und Farbschema.
+Unverschlüsselt liegen nur Schlüsselbund, Schemaversion und Farbschema. Der
+Sync-Zustand (Verbindung, Token, Kontoschlüssel, ausstehende Änderungen) ist
+ebenfalls mit dem DEK verschlüsselt.
 
 ## Aufbau
 
 ```
-lib/core/   krypto/ speicher/ modell/ kalender/ aufgaben/ finanzen/ dienste/ sitzung.dart
-lib/ui/     zugang/ uebersicht/ termine/ aufgaben/ notizen/ finanzen/ einstellungen/ shell.dart thema.dart
+lib/core/   krypto/ speicher/ modell/ kalender/ aufgaben/ finanzen/ dienste/ sync/ sitzung.dart
+lib/ui/     zugang/ uebersicht/ termine/ aufgaben/ notizen/ finanzen/ einstellungen/ sync/ shell.dart thema.dart
 ```
 
 Haushaltsbuch-Vorschau (`core/finanzen/prognose.dart`): erwartet bis Monatsende =
@@ -67,3 +74,10 @@ heute fällig (eigener Block). Heute = bis zu zwei heute fällige, wichtigste
 zuerst. Diese Woche = bis zu zwei aus „in den nächsten 7 Tagen fällig, normal
 oder hoch“ plus „hoch ohne Datum“, hohe zuerst. Niedrige erscheinen nur in der
 Liste; keine Aufgabe erscheint zweimal.
+
+Sync (`core/sync/sync_motor.dart`): erst alles Neue holen und in einer
+Transaktion einspielen, dann Ausstehendes senden. Bei gleichzeitiger Änderung
+gilt die zuerst beim Server angekommene Fassung; die andere bleibt als
+Konflikt-Fassung erhalten, bis sie übernommen oder verworfen wird. Automatisch
+nur bei entsperrter App (nach dem Entsperren, 2 s nach Änderungen, alle 5 Min,
+per Knopf). Tests: `test/core/sync_test.dart` mit dem echten Server im Speicher.

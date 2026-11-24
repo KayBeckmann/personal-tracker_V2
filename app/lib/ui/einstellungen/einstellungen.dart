@@ -11,6 +11,7 @@ import '../dateien.dart';
 import '../format.dart';
 import '../navigation.dart';
 import '../speicherstatus.dart';
+import '../sync/sync.dart';
 import '../thema.dart';
 import '../zugang/rahmen.dart';
 import '../zugang/wiederherstellen.dart';
@@ -54,7 +55,12 @@ class _EinstellungenSeiteState extends ConsumerState<EinstellungenSeite> {
     }
   }
 
-  Future<void> _einlesen() => Navigator.of(context).push(MaterialPageRoute(
+  Future<void> _einlesen() async {
+    if (ref.read(sitzungProvider.notifier).syncAktiv) {
+      meldung(context, 'Mit aktivem Sync geht das nicht: Die ersetzten Daten kämen sonst vom Server zurück. Bitte zuerst trennen.', fehler: true);
+      return;
+    }
+    await Navigator.of(context).push(MaterialPageRoute(
         builder: (ctx) => Scaffold(
           backgroundColor: ctx.farben.flaeche,
           appBar: AppBar(backgroundColor: ctx.farben.flaeche, surfaceTintColor: Colors.transparent),
@@ -77,6 +83,7 @@ class _EinstellungenSeiteState extends ConsumerState<EinstellungenSeite> {
           ),
         ),
       ));
+  }
 
   Future<void> _passwortAendern() async {
     final form = GlobalKey<FormState>();
@@ -232,6 +239,11 @@ class _EinstellungenSeiteState extends ConsumerState<EinstellungenSeite> {
                     runSpacing: 8,
                     children: [
                       OutlinedButton(key: const Key('passwort-aendern'), onPressed: _passwortAendern, child: const Text('Passwort ändern')),
+                      OutlinedButton(
+                        key: const Key('recovery-erneuern'),
+                        onPressed: () => recoveryErneuern(context),
+                        child: const Text('Neuer Recovery-Schlüssel …'),
+                      ),
                       OutlinedButton.icon(
                         onPressed: () => ref.read(sitzungProvider.notifier).sperren(),
                         icon: const Icon(Icons.lock_outline, size: 18),
@@ -323,15 +335,7 @@ class _EinstellungenSeiteState extends ConsumerState<EinstellungenSeite> {
                 ],
               ),
             ),
-            Karte(
-              titel: 'Optional synchronisieren',
-              marke: 'später',
-              child: Text(
-                'Kommt mit Meilenstein M3: Kays kostenpflichtig gehostetes Backend oder deine eigene Serveradresse. '
-                'Eine Voreinstellung verbindet sich nie automatisch und lädt nichts hoch.',
-                style: klein,
-              ),
-            ),
+            SyncKarte(vorherSichern: _sichern),
           ],
         ),
         const SizedBox(height: 6),

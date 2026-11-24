@@ -1,0 +1,30 @@
+# Self-Hosting: Sync-Server plus Caddy für TLS.
+# 1. In `Caddyfile` die eigene Domain eintragen (DNS muss auf diesen Rechner zeigen).
+# 2. `docker compose up -d --build`
+services:
+  sync:
+    build: .
+    restart: unless-stopped
+    environment:
+      PT_HINTER_PROXY: "1"
+      # PT_URSPRUNG: "https://tracker.example.org"  # nur diese Web-App zulassen
+    volumes:
+      - sync-daten:/daten
+    expose:
+      - "8743"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-daten:/data
+    depends_on:
+      - sync
+
+volumes:
+  sync-daten:
+  caddy-daten:

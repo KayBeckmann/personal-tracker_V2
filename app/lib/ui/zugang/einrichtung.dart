@@ -1,17 +1,18 @@
 
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/krypto/recovery_schluessel.dart';
 import '../../core/krypto/schluesselbund.dart';
 import '../../core/sitzung.dart';
 import '../bausteine.dart';
-import '../thema.dart';
+import '../sync/sync.dart';
 import 'rahmen.dart';
 import 'wiederherstellen.dart';
 
-enum _Schritt { willkommen, passwort, recovery, wiederherstellen }
+enum _Schritt { willkommen, passwort, recovery, wiederherstellen, syncKoppeln, syncRecovery }
 
 /// Erster Start: neu beginnen (Passwort → Recovery-Schlüssel bestätigen)
 /// oder eine Sicherung übernehmen. Gespeichert wird erst nach der
@@ -66,7 +67,6 @@ class _EinrichtungSeiteState extends ConsumerState<EinrichtungSeite> {
 
   @override
   Widget build(BuildContext context) {
-    final f = context.farben;
     return ZugangsRahmen(
       child: switch (_schritt) {
         _Schritt.willkommen => Column(
@@ -89,6 +89,20 @@ class _EinrichtungSeiteState extends ConsumerState<EinrichtungSeite> {
                 key: const Key('aus-sicherung'),
                 onPressed: () => setState(() => _schritt = _Schritt.wiederherstellen),
                 child: const Text('Aus einer Sicherung wiederherstellen'),
+              ),
+              const SizedBox(height: 22),
+              Text('Schon mit einem Sync-Server verbunden?', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                key: const Key('mit-geraet-verbinden'),
+                onPressed: () => setState(() => _schritt = _Schritt.syncKoppeln),
+                child: const Text('Mit einem anderen Gerät verbinden'),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                key: const Key('aus-sync'),
+                onPressed: () => setState(() => _schritt = _Schritt.syncRecovery),
+                child: const Text('Alle Geräte verloren? Vom Server wiederherstellen'),
               ),
             ],
           ),
@@ -134,34 +148,7 @@ class _EinrichtungSeiteState extends ConsumerState<EinrichtungSeite> {
                     'Er wird nur jetzt angezeigt.',
               ),
               const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: f.notizHg, borderRadius: BorderRadius.circular(12)),
-                // Eigene Semantik: SelectableText ist für Screenreader sonst stumm.
-                child: Semantics(
-                  label: 'Recovery-Schlüssel ${_vorbereitet!.recovery.anzeigen()}',
-                  container: true,
-                  child: ExcludeSemantics(
-                    child: SelectableText(
-                      _vorbereitet!.recovery.anzeigen(),
-                      key: const Key('recovery-anzeige'),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontFamily: 'NotoSansMono', fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: 1.5, height: 1.6),
-                    ),
-                  ),
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('Kopieren'),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: _vorbereitet!.recovery.anzeigen()));
-                    meldung(context, 'Kopiert — nach dem Aufschreiben die Zwischenablage leeren.');
-                  },
-                ),
-              ),
+              RecoveryAnzeige(_vorbereitet!.recovery),
               const Hinweis(
                 warnung: true,
                 text: 'Ohne Passwort und ohne diesen Schlüssel sind die Daten nicht wiederherstellbar — '
@@ -186,6 +173,10 @@ class _EinrichtungSeiteState extends ConsumerState<EinrichtungSeite> {
                   child: const Text('Aufgeschrieben — los geht’s'),
                 ),
             ],
+          ),
+        _Schritt.syncKoppeln || _Schritt.syncRecovery => SyncAblauf(
+            weg: _schritt == _Schritt.syncKoppeln ? SyncWeg.neuKoppeln : SyncWeg.neuRecovery,
+            onAbbrechen: () => setState(() => _schritt = _Schritt.willkommen),
           ),
         _Schritt.wiederherstellen => WiederherstellenAblauf(
             neu: true,
