@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../core/krypto/recovery_schluessel.dart';
+import '../bausteine.dart';
 import '../thema.dart';
 
 /// Ruhiger Rahmen für Einrichtung und Entsperren.
@@ -133,4 +136,48 @@ class Fehlertext extends StatelessWidget {
         padding: const EdgeInsets.only(top: 12),
         child: Text(text, key: const Key('zugang-fehler'), style: TextStyle(color: context.farben.fehler)),
       );
+}
+
+/// Recovery-Schlüssel groß und auswählbar, mit „Kopieren“.
+class RecoveryAnzeige extends StatelessWidget {
+  const RecoveryAnzeige(this.schluessel, {super.key});
+  final RecoverySchluessel schluessel;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = schluessel.anzeigen();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: context.farben.notizHg, borderRadius: BorderRadius.circular(12)),
+          // Eigene Semantik: SelectableText ist für Screenreader sonst stumm.
+          child: Semantics(
+            label: 'Recovery-Schlüssel $text',
+            container: true,
+            child: ExcludeSemantics(
+              child: SelectableText(
+                text,
+                key: const Key('recovery-anzeige'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontFamily: 'NotoSansMono', fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: 1.5, height: 1.6),
+              ),
+            ),
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            icon: const Icon(Icons.copy, size: 16),
+            label: const Text('Kopieren'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: text));
+              meldung(context, 'Kopiert — nach dem Aufschreiben die Zwischenablage leeren.');
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }

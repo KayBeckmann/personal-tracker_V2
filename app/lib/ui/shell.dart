@@ -12,6 +12,7 @@ import 'navigation.dart';
 import 'notizen/notizen.dart';
 import 'termine/termine.dart';
 import 'thema.dart';
+import 'sync/sync.dart';
 import 'uebersicht/uebersicht.dart';
 import 'zugang/rahmen.dart';
 
@@ -142,10 +143,7 @@ class _Seitenleiste extends ConsumerWidget {
           const Spacer(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-              'Lokal & verschlüsselt\nKein Konto, kein Server',
-              style: TextStyle(fontSize: 12, color: f.leise, height: 1.5),
-            ),
+            child: SyncStatusText(style: TextStyle(fontSize: 12, color: f.leise, height: 1.5)),
           ),
           const SizedBox(height: 12),
           Align(

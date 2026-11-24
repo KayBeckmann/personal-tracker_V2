@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/sitzung.dart';
+import '../core/sync/sync_dienst.dart';
 import 'navigation.dart';
 import 'shell.dart';
 import 'thema.dart';
@@ -55,6 +56,9 @@ class _TrackerAppState extends ConsumerState<TrackerApp> {
         _navigator.currentState?.popUntil((r) => r.isFirst);
       }
     });
+    // Hält den Sync-Dienst von Anfang an am Leben, damit er das
+    // Entsperren mitbekommt.
+    ref.listen(syncProvider, (_, _) {});
     final sitzung = ref.watch(sitzungProvider);
     final Widget seite = switch (sitzung) {
       Einrichtung() => const EinrichtungSeite(),
