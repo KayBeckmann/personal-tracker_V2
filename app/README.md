@@ -49,7 +49,8 @@ flutter build apk --release --split-per-abi   # braucht android/key.properties
 | Sperre | Beim Start, per Knopf und nach 5 Min im Hintergrund; offene Seiten werden geschlossen |
 | Sicherung | `.ptbackup`: JSON-Kopf (als AAD gebunden) + AES-GCM-Inhalt mit Schlüssel aus dem Recovery-Schlüssel; Einlesen mit Vorschau, in frischer oder laufender Installation |
 | Erinnerungen | Termine und Aufgaben. Android: im System geplant (30 Tage, max. 60), ohne Titel, sofern nicht eingestellt. Web: nur bei geöffneter App |
-| Schema | `lib/core/speicher/schema.dart`: Version + Migrationen (1 = M1, 2 = M2 mit Aufgaben, 3 = M3 mit Konflikt-Fassungen); neuere Stände werden abgelehnt, Migration in einer Transaktion |
+| Schema | `lib/core/speicher/schema.dart`: Version + Migrationen (1 = M1, 2 = M2 mit Aufgaben, 3 = M3 mit Konflikt-Fassungen, 4 = M4 mit Vault-Dateien im Sync); neuere Stände werden abgelehnt, Migration in einer Transaktion |
+| Vault | `lib/core/vault/`: Dateien des Obsidian-Vaults aus dem Sync (Vertrag: [protokoll/VAULT.md](../protokoll/VAULT.md)); große Dateien in verschlüsselten Blöcken, erst beim Öffnen geladen und dann zwischengespeichert; Secret-Muster aus `protokoll/secret-muster.json` (Kopie in `secret_muster.g.dart`, ein Test prüft die Gleichheit) |
 | Sync | `lib/core/sync/`: Kontoschlüssel (256 Bit) verschlüsselt jeden Datensatz vor dem Upload; Objekt-IDs sind HMACs; Kopplung per Einmal-Code, Recovery über den Recovery-Schlüssel. Details: [server/SICHERHEIT.md](../server/SICHERHEIT.md) |
 
 Unverschlüsselt liegen nur Schlüsselbund, Schemaversion und Farbschema. Der
@@ -59,8 +60,8 @@ ebenfalls mit dem DEK verschlüsselt.
 ## Aufbau
 
 ```
-lib/core/   krypto/ speicher/ modell/ kalender/ aufgaben/ finanzen/ dienste/ sync/ sitzung.dart
-lib/ui/     zugang/ uebersicht/ termine/ aufgaben/ notizen/ finanzen/ einstellungen/ sync/ shell.dart thema.dart
+lib/core/   krypto/ speicher/ modell/ kalender/ aufgaben/ finanzen/ dienste/ sync/ vault/ sitzung.dart
+lib/ui/     zugang/ uebersicht/ termine/ aufgaben/ notizen/ finanzen/ einstellungen/ sync/ vault/ shell.dart thema.dart
 ```
 
 Haushaltsbuch-Vorschau (`core/finanzen/prognose.dart`): erwartet bis Monatsende =
@@ -81,3 +82,16 @@ gilt die zuerst beim Server angekommene Fassung; die andere bleibt als
 Konflikt-Fassung erhalten, bis sie übernommen oder verworfen wird. Automatisch
 nur bei entsperrter App (nach dem Entsperren, 2 s nach Änderungen, alle 5 Min,
 per Knopf). Tests: `test/core/sync_test.dart` mit dem echten Server im Speicher.
+
+Vault (`core/vault/`, `ui/vault/`): Die Dateien sind ein eigener Sync-Bereich
+und nicht Teil der Sicherung (das Original liegt im Obsidian-Ordner; die App
+kann den Vault als ZIP exportieren). Pfad und Inhalt werden getrennt
+zusammengeführt; bei gleichzeitig verschiedenem Inhalt entsteht „Name (Konflikt
+JJJJ-MM-TT HHMM Gerät).ext“. Neue Secret-Muster: `protokoll/secret-muster.json`
+ändern, dann die Dart-Kopie neu erzeugen:
+
+```bash
+tool/secret_muster_erzeugen.sh
+```
+
+Testvektoren für das Plugin neu schreiben: `PT_VEKTOREN=schreiben flutter test test/core/protokoll_test.dart`.

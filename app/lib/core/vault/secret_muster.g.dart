@@ -1,5 +1,5 @@
 // Kopie von protokoll/secret-muster.json (Test prüft Gleichheit).
-// Erzeugen: siehe app/README.md, Abschnitt Vault.
+// Erzeugen: tool/secret_muster_erzeugen.sh
 const secretMusterJson = r'''{
   "version": 1,
   "hinweis": "Gemeinsame Secret-Muster für App und Obsidian-Plugin. Eine Regel meldet nur Name und Zeile, nie den gefundenen Wert. Platzhalter schließt Werte aus, die offensichtlich keine echten Geheimnisse sind (auch Programmcode wie `e.token` oder `getSecret(…)`).",
