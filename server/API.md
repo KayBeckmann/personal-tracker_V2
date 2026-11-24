@@ -1,0 +1,117 @@
+# Sync-Vertrag v1
+
+Dies ist die Schnittstelle zwischen den Apps (Android, Web, später Obsidian) und dem Sync-Server. Implementiert ist sie in `lib/src/api.dart`, der Client steht in `app/lib/core/sync/sync_api.dart`. Der Server speichert ausschließlich Daten, die er nicht lesen kann. Die Verschlüsselung beschreibt [SICHERHEIT.md](SICHERHEIT.md).
+
+## Grundregeln
+
+- **Format:** JSON (UTF-8). Fehler haben die Form `{"fehler": "<code>", "meldung": "<Text>"}`.
+- **Version:** Das Präfix `/v1` ist die API-Version. Innerhalb von v1 kommen nur Felder hinzu. Clients ignorieren unbekannte Felder. Ändert sich etwas inkompatibel, gibt es `/v2`. Ein v2-Server bedient v1 so lange weiter, bis die Apps umgestellt sind.
+- **Anmeldung:** Jedes Gerät meldet sich mit `Authorization: Bearer <token>` an. Der Token hat 256 Bit Zufall. Der Server speichert davon nur den SHA-256.
+- **Anmeldung ist kein Leserecht:** Ein gültiger Token liefert nur Geheimtext. Den Kontoschlüssel kennt der Server nicht.
+- **Begrenzung:** Kontoanlage, Recovery-Anmeldung und das Einlösen eines Kopplungscodes sind pro IP-Adresse begrenzt (Standard: 20 in 10 Minuten).
+- **Größen:** Eine Anfrage darf höchstens 8 MiB groß sein, ein Objekt höchstens 1 MiB. Pro Schreibvorgang gehen höchstens 200 Änderungen durch, pro Abruf kommen höchstens 500 Objekte.
+
+| Code | HTTP | Bedeutung |
+|------|------|-----------|
+| `ungueltig` | 400 | Feld fehlt, hat den falschen Typ oder ein falsches Format |
+| `nicht-angemeldet` | 401 | Token unbekannt, Gerät entfernt oder Konto gelöscht |
+| `verboten` | 403 | Aktion für dieses Gerät nicht erlaubt |
+| `nicht-gefunden` | 404 | Kein Konto zum Recovery-Geheimnis oder Kopplungscode unbekannt bzw. abgelaufen |
+| `vorhanden` | 409 | Zu diesem Recovery-Schlüssel gibt es schon ein Konto |
+| `zu-gross` | 413 | Anfrage oder Feld zu groß |
+| `zu-viele` | 429 | Zu viele Versuche oder offene Kopplungen |
+
+## Endpunkte
+
+### `GET /v1/info`
+
+Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.0.0", "instanz": "<hex>"}`. Die Apps prüfen damit vor dem Verbinden, ob unter der Adresse ein passender Server läuft.
+
+### `POST /v1/konten` – Konto anlegen
+
+```json
+{"recoveryAuth": "<base64url, 32 Byte>", "recoveryHuelle": "<Geheimtext>", "schluesselPaket": "<Geheimtext>", "geraetName": "<Geheimtext>"}
+```
+
+Antwort `201`: `{"konto": "<hex>", "geraet": "<hex>", "token": "<base64url>"}`.
+
+Zu jedem `recoveryAuth` gibt es höchstens ein Konto. Ein zweiter Versuch mit demselben Wert endet mit `409`.
+
+### `POST /v1/anmelden/recovery` – mit dem Recovery-Schlüssel anmelden
+
+Gedacht für den Fall, dass kein Gerät mehr da ist, oder für ein Gerät, das schon Daten hat. Der Aufruf registriert ein neues Gerät.
+
+```json
+{"recoveryAuth": "<base64url>", "geraetName": "<Geheimtext oder leer>"}
+```
+
+Antwort: `{"konto", "geraet", "token", "recoveryHuelle"}`.
+
+### `GET /v1/konto`
+
+Liefert:
+
+```json
+{
+  "konto": "<hex>", "seq": 42, "objekte": 17,
+  "recoveryHuelle": "…", "schluesselPaket": "…", "erstellt": "…",
+  "geraet": "<eigene id>",
+  "geraete": [{"id": "…", "name": "<Geheimtext>", "erstellt": "…", "zuletzt": "…"}]
+}
+```
+
+### `PUT /v1/konto/recovery` – Recovery-Schlüssel ersetzen
+
+Body: `{"recoveryAuth", "recoveryHuelle", "schluesselPaket"}`. Danach funktioniert die Anmeldung mit dem alten Schlüssel nicht mehr.
+
+### `DELETE /v1/konto`
+
+Löscht das Konto mit allen Objekten, Geräten und Kopplungen.
+
+### `PUT /v1/geraete/<id>` / `DELETE /v1/geraete/<id>`
+
+- **`PUT`:** Benennt das eigene Gerät um. Body: `{"name": "<Geheimtext>"}`.
+- **`DELETE`:** Entfernt ein Gerät desselben Kontos, auch das eigene. Danach ist dessen Token ungültig.
+
+### `POST /v1/kopplungen` – Kopplung anbieten
+
+Body: `{"slot": "<64 hex>", "paket": "<Geheimtext>", "gueltigSekunden": 30…900}`.
+
+Pro Konto sind höchstens 5 Kopplungen gleichzeitig offen.
+
+### `POST /v1/kopplungen/<slot>/einloesen`
+
+Body: `{"geraetName": "…"}`. Antwort: `{"konto", "paket", "geraet", "token"}`.
+
+- Eine Kopplung lässt sich genau einmal einlösen.
+- Eine abgelaufene oder unbekannte Kopplung liefert `404`.
+
+### `GET /v1/objekte?seit=<seq>&max=<n>` – abholen
+
+Antwort: `{"objekte": [{"id", "seq", "daten"}], "bis": <seq>, "mehr": <bool>}`.
+
+- **Reihenfolge:** Die Objekte kommen aufsteigend nach `seq`.
+- **`mehr`:** Ist `mehr` gesetzt, geht es mit `seit=bis` weiter.
+- **`bis` ohne neue Objekte:** Dann ist `bis` der Stand des Kontos. Liegt er unter dem Stand, den der Client kennt, wurde der Server zurückgesetzt. Der Client baut ihn dann neu auf.
+
+### `POST /v1/objekte` – senden
+
+```json
+{"aenderungen": [{"id": "<32–64 hex>", "basis": <seq>, "aenderung": "<uuid>", "daten": "<Geheimtext>"}]}
+```
+
+Antwort: `{"ergebnisse": [{"id", "status": "ok", "seq"} | {"id", "status": "konflikt", "seq", "daten"}]}`.
+
+Alle Änderungen laufen in einer Transaktion. Je Objekt gilt:
+
+1. **Neues Objekt:** wird geschrieben.
+2. **`basis` gleich der Serverrevision:** wird geschrieben und bekommt eine neue `seq`.
+3. **Gleiche `aenderung` wie die gespeicherte:** gilt als Wiederholung, etwa nach einer verlorenen Antwort. Der Server meldet `ok` mit der bisherigen `seq` und schreibt nicht doppelt.
+4. **Sonst:** `konflikt` mit der Serverfassung. Der Client holt sie ab und entscheidet selbst; der Server führt nie zusammen.
+
+Löschungen sind gewöhnliche Objekte, deren verschlüsselter Inhalt „gelöscht“ lautet. Der Server sieht keinen Unterschied zu anderen Objekten.
+
+## Kompatibilität und Migration
+
+- **Datenbank:** Das Schema der Server-Datenbank steht in `PRAGMA user_version` (aktuell 1). Migrationen laufen beim Start in einer Transaktion. Eine neuere Datenbank lehnt ein älterer Server ab.
+- **Schemaversion der Inhalte:** Sie steht im verschlüsselten Umschlag und ist damit Sache der Apps. Eine App spielt nichts aus einer neueren Schemaversion ein und meldet dann „App aktualisieren“.

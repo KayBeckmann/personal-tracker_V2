@@ -1,6 +1,6 @@
 # Personal Tracker V2
 
-**Status: Meilensteine M1 und M2 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code und Bauanleitung: [app/](app/README.md). Ein Backend, Sync, Freigaben oder Vault-Anbindung gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
+**Status: Meilensteine M1–M3 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md) und [server/](server/README.md). Freigaben an andere Personen, Vault-Anbindung und ein gehostetes Angebot gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
 
 ## Produktidee
 
@@ -22,6 +22,14 @@ Weitere besprochene Anforderungen sind gezielte private Datei- und Ordnerfreigab
 - Aufgabenliste nach Überfällig, Heute, Nächste 7 Tage, Später, Ohne Datum; Suche; Erledigte einblendbar und wieder zu öffnen; Abhaken mit Rückgängig.
 - Übersicht: Überfälliges als eigener Block, „Heute“ und „Diese Woche“ zeigen je höchstens zwei Aufgaben ohne Dublette (Woche: normal/hoch in den nächsten 7 Tagen und hohe ohne Datum). Aufgaben werden nie automatisch zu Terminen.
 - Datenschema 2: vorhandene M1-Daten und M1-Sicherungen werden beim Update übernommen; eine M1-App lehnt M2-Sicherungen ab, statt Aufgaben still zu verlieren.
+
+## Stand M3 (umgesetzt, Abnahme auf Geräten offen)
+
+- Freiwilliger Sync über einen selbst hostbaren Server ([server/](server/README.md): Dart, SQLite, Docker Compose mit Caddy). Ohne Verbindung bleibt alles wie in M1/M2, die App stellt dann keine Netzanfragen.
+- Ende-zu-Ende-verschlüsselt: Die Apps verschlüsseln jeden Datensatz vor dem Upload; der Server sieht nur Geheimtext, zufällige bzw. gehashte IDs, Revisionen und Größen. Kryptografie und Grenzen: [server/SICHERHEIT.md](server/SICHERHEIT.md), Vertrag: [server/API.md](server/API.md).
+- Erstes Gerät verbindet sich mit dem Recovery-Schlüssel (Vorschau, Sicherung vorher angeboten); weitere Geräte per Einmal-Kopplungscode (10 Minuten, einmalig). Bei Verlust aller Geräte holen Serveradresse und Recovery-Schlüssel alles zurück. Recovery-Schlüssel lässt sich erneuern, Geräte lassen sich entfernen, der Sync lässt sich trennen (Daten bleiben) oder samt Serverkonto löschen.
+- Abgleich bei geöffneter App automatisch und per Knopf; offline Erfasstes geht beim nächsten Mal hoch. Gleichzeitige Änderungen überschreiben einander nicht: Die zweite Fassung bleibt als sichtbarer Konflikt erhalten, bis sie übernommen oder verworfen wird.
+- Datenschema 3 (Konflikt-Fassungen); M1/M2-Daten und -Sicherungen werden übernommen.
 
 ## Mock-ups
 
