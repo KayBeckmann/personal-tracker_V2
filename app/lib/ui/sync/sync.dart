@@ -296,7 +296,7 @@ class _SyncAblaufState extends ConsumerState<SyncAblauf> {
       SyncWeg.koppeln || SyncWeg.neuKoppeln => (
           'Gerät koppeln',
           'Mit einem anderen Gerät verbinden.',
-          'Auf dem verbundenen Gerät unter Einstellungen → Synchronisieren „Gerät hinzufügen“ wählen und den Code hier '
+          'Auf dem verbundenen Gerät unter „Speicher & Sicherheit“ bei „Synchronisieren“ auf „Gerät hinzufügen“ tippen und den Code hier '
               'eingeben. Er gilt 10 Minuten und nur einmal.',
         ),
       SyncWeg.neuRecovery => (
@@ -448,8 +448,8 @@ class _KopplungDialogState extends ConsumerState<_KopplungDialog> {
             else if (k == null)
               const Laedt('Code wird erzeugt …')
             else ...[
-              const Text('Auf dem neuen Gerät „Mit einem anderen Gerät verbinden“ (beim ersten Start) oder in den '
-                  'Einstellungen „Mit Kopplungscode …“ wählen und eingeben:'),
+              const Text('Auf dem neuen Gerät „Mit einem anderen Gerät verbinden“ (beim ersten Start) oder unter '
+                  '„Speicher & Sicherheit“ „Mit Kopplungscode …“ wählen und eingeben:'),
               const SizedBox(height: 14),
               Container(
                 padding: const EdgeInsets.all(14),
