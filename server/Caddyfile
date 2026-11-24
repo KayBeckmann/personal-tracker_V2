@@ -1,0 +1,8 @@
+# Eigene Domain statt sync.example.org eintragen. Caddy holt das
+# TLS-Zertifikat selbst (Let's Encrypt).
+sync.example.org {
+	reverse_proxy sync:8743
+	request_body {
+		max_size 8MB
+	}
+}
