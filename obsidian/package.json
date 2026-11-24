@@ -1,0 +1,19 @@
+{
+  "name": "personal-tracker-sync-obsidian",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Obsidian-Plugin: Vault Ende-zu-Ende-verschlüsselt mit dem Personal-Tracker-Sync abgleichen",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "check": "tsc -p .",
+    "test": "node --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.14.4",
+    "typescript": "^5.9.3"
+  }
+}

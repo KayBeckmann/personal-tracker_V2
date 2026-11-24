@@ -226,6 +226,18 @@ void main() {
       expect(inhalte, {'von A', 'von B'});
     });
 
+    test('Dieselbe Datei auf zwei Geräten neu angelegt: keine Dublette', () async {
+      final (a, b) = await zweiGeraete();
+      await a.v.speichern(pfad: 'Gleich.md', inhalt: t('derselbe Text'));
+      await b.v.speichern(pfad: 'Gleich.md', inhalt: t('derselbe Text'));
+      await a.vaultAbgleichen();
+      await b.vaultAbgleichen();
+      await a.vaultAbgleichen();
+      expect(a.dateien.map((d) => d.pfad), ['Gleich.md']);
+      expect(b.dateien.map((d) => d.id), a.dateien.map((d) => d.id));
+      expect(b.status.ausstehend, 0);
+    });
+
     test('Secret blockiert das Hochladen, bis genau dieser Inhalt freigegeben ist', () async {
       final (a, b) = await zweiGeraete();
       await a.v.speichern(pfad: 'Zugang.md', inhalt: t('Server\nPasswort: Pferd-Batterie-77\n'));

@@ -315,15 +315,25 @@ class SyncMotor {
   }
 
   /// Schreibt eine Datei; belegt schon eine andere Datei denselben Pfad,
-  /// behält die mit der kleineren ID ihn und die andere wird umbenannt.
-  /// Die Regel ist auf allen Geräten gleich, damit sie dasselbe tun.
+  /// weicht die hier neu angelegte (gleicher Inhalt: sie entfällt). Sind
+  /// beide schon beim Server, behält die kleinere ID den Pfad — auf allen
+  /// Geräten gleich, damit sie dasselbe tun.
   Future<void> _vaultSchreiben(VaultDatei d, Map<String, String> ausgang, String geraetName, DatabaseClient tx) async {
     final index = await _index(tx);
     final andere = index.values.where((x) => x.id != d.id && x.pfad == d.pfad).firstOrNull;
     var neu = d;
-    if (andere != null) {
+    final ak = andere == null ? null : SyncStand.schluessel(vaultBereich, andere.id);
+    if (andere != null && andere.sha256 == d.sha256 && ausgang.containsKey(ak) && (await stand.basis(tx: tx))[ak] == null) {
+      // Hier neu angelegt, dort dieselbe Datei: eine Datei, die vom Server.
+      await vault.loeschen(andere.id, tx: tx);
+      index.remove(andere.id);
+      await stand.erledigt(ak!, tx: tx);
+      ausgang.remove(ak);
+    } else if (andere != null) {
       final belegt = {for (final x in index.values) x.pfad};
-      final weicht = andere.id.compareTo(d.id) > 0 ? andere : d;
+      // Was noch nicht beim Server ist, weicht; sonst die größere ID.
+      final andereNeu = (await stand.basis(tx: tx))[ak] == null;
+      final weicht = andereNeu || andere.id.compareTo(d.id) > 0 ? andere : d;
       final umbenannt = weicht.kopie(pfad: konfliktPfad(weicht.pfad, _uhr(), geraetName, belegt.contains));
       if (identical(weicht, d)) {
         neu = umbenannt;
