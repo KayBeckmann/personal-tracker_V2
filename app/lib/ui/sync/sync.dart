@@ -626,6 +626,7 @@ class _GeraeteDialog extends ConsumerStatefulWidget {
 
 class _GeraeteDialogState extends ConsumerState<_GeraeteDialog> {
   List<SyncGeraet>? _liste;
+  String? _konto;
   String? _fehler;
 
   @override
@@ -637,7 +638,13 @@ class _GeraeteDialogState extends ConsumerState<_GeraeteDialog> {
   Future<void> _laden() async {
     try {
       final l = await ref.read(syncProvider.notifier).geraete();
-      if (mounted) setState(() => _liste = l);
+      final k = await ref.read(syncProvider.notifier).kontoId();
+      if (mounted) {
+        setState(() {
+          _liste = l;
+          _konto = k;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _fehler = e is SyncFehler ? e.meldung : '$e');
     }
@@ -691,6 +698,12 @@ class _GeraeteDialogState extends ConsumerState<_GeraeteDialog> {
                           onPressed: () => _entfernen(g),
                         ),
                 ),
+            if (_konto != null) ...[
+              const SizedBox(height: 10),
+              Text('Konto-ID (nur für den Support des Server-Betreibers, kein Geheimnis):',
+                  style: TextStyle(fontSize: 12, color: context.farben.gedaempft)),
+              SelectableText(_konto!, key: const Key('sync-konto-id'), style: const TextStyle(fontFamily: 'NotoSansMono', fontSize: 12)),
+            ],
           ],
         ),
       ),

@@ -26,7 +26,11 @@ Dies ist die Schnittstelle zwischen den Apps (Android, Web, später Obsidian) un
 
 ### `GET /v1/info`
 
-Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.4.0", "instanz": "<hex>"}`. Die Apps prüfen damit vor dem Verbinden, ob unter der Adresse ein passender Server läuft.
+Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.5.0", "instanz": "<hex>", "registrierung": "offen|einladung|zu", "kontingent"?: <Byte>}`. Die Apps prüfen damit vor dem Verbinden, ob unter der Adresse ein passender Server läuft, und ob ein neues Konto einen Einladungscode braucht (seit 1.5.0; ältere Server liefern kein `registrierung` = `offen`). `kontingent` ist der Standard je Konto, falls begrenzt.
+
+### `GET /v1/gesund` (seit 1.5.0)
+
+`200 {"ok": true, "version"}`, wenn die Datenbank antwortet, sonst `503`. Für Healthchecks und Überwachung; ohne Anmeldung und ohne Kennzahlen.
 
 ### `POST /v1/konten` – Konto anlegen
 
@@ -37,6 +41,14 @@ Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.4.0", "inst
 Antwort `201`: `{"konto": "<hex>", "geraet": "<hex>", "token": "<base64url>"}`.
 
 Zu jedem `recoveryAuth` gibt es höchstens ein Konto. Ein zweiter Versuch mit demselben Wert endet mit `409`.
+
+**Registrierung** (seit 1.5.0, `PT_REGISTRIERUNG`):
+
+- `offen`: wie bisher.
+- `einladung`: zusätzlich `"einladung": "<Code>"` (Einmal-Code vom Betreiber, `pt-sync einladung`; Groß-/Kleinschreibung und Trenner egal). Ohne Code `403 einladung-noetig`, mit unbekanntem, abgelaufenem oder benutztem Code `403 einladung-ungueltig`. Der Code wird erst mit dem Konto verbraucht. Der Server speichert nur seinen Hash.
+- `zu`: `403 registrierung-zu`.
+
+Die Anmeldung bestehender Konten (`/v1/anmelden/recovery`, Kopplung) hängt nicht davon ab. Die App versucht ohne Code deshalb erst die Anmeldung und fragt nur nach einem Code, wenn es das Konto noch nicht gibt.
 
 ### `POST /v1/anmelden/recovery` – mit dem Recovery-Schlüssel anmelden
 
@@ -57,9 +69,12 @@ Liefert:
   "konto": "<hex>", "seq": 42, "objekte": 17, "bloecke": 3, "belegt": 123456,
   "recoveryHuelle": "…", "schluesselPaket": "…", "erstellt": "…",
   "geraet": "<eigene id>",
-  "geraete": [{"id": "…", "name": "<Geheimtext>", "erstellt": "…", "zuletzt": "…", "art": "geraet|agent", "ablauf"?: "…"}]
+  "geraete": [{"id": "…", "name": "<Geheimtext>", "erstellt": "…", "zuletzt": "…", "art": "geraet|agent", "ablauf"?: "…"}],
+  "belegtGesamt": 234567, "kontingent"?: 1073741824
 }
 ```
+
+`belegt` zählt Objekte und Blöcke des Kontos, `belegtGesamt` (seit 1.5.0) zusätzlich alles in eigenen Räumen; darauf bezieht sich das Kontingent. `kontingent` fehlt, wenn es unbegrenzt ist. Der Betreiber kann es je Konto setzen (`pt-sync kontingent`). Wird es überschritten, endet Schreiben mit `413 kontingent`.
 
 ### `PUT /v1/konto/recovery` – Recovery-Schlüssel ersetzen
 
@@ -163,5 +178,5 @@ Der Katalog ist **nicht verschlüsselt** und für andere Instanzen lesbar. Regel
 
 ## Kompatibilität und Migration
 
-- **Datenbank:** Das Schema der Server-Datenbank steht in `PRAGMA user_version` (aktuell 5; 2 ergänzt die Blöcke, 3 die Räume, 4 den Katalog, 5 Geräte-Art und -Ablauf). Migrationen laufen beim Start in einer Transaktion. Eine neuere Datenbank lehnt ein älterer Server ab.
+- **Datenbank:** Das Schema der Server-Datenbank steht in `PRAGMA user_version` (aktuell 6; 2 ergänzt die Blöcke, 3 die Räume, 4 den Katalog, 5 Geräte-Art und -Ablauf, 6 Kontingent je Konto und Registrierungscodes). Migrationen laufen beim Start in einer Transaktion. Eine neuere Datenbank lehnt ein älterer Server ab.
 - **Schemaversion der Inhalte:** Sie steht im verschlüsselten Umschlag und ist damit Sache der Apps. Eine App spielt nichts aus einer neueren Schemaversion ein und meldet dann „App aktualisieren“.

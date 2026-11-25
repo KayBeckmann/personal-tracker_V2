@@ -92,6 +92,20 @@ class Speicher {
   static Speicher oeffnen(String pfad) => Speicher._(_sqlite.open(pfad)).._einrichten();
   static Speicher imSpeicher() => Speicher._(_sqlite.openInMemory()).._einrichten();
 
+  /// Prüft eine Datenbankdatei (z. B. eine Sicherung) nur lesend, ohne sie
+  /// zu migrieren: Schema-Version und `integrity_check`.
+  static ({int schema, String ergebnis}) dateiPruefen(String pfad) {
+    if (!File(pfad).existsSync()) throw SpeicherFehler('Datei $pfad gibt es nicht.');
+    final db = _sqlite.open(pfad, mode: OpenMode.readOnly);
+    try {
+      final schema = db.select('PRAGMA user_version').first.values.first as int;
+      final e = db.select('PRAGMA integrity_check').map((r) => r.values.first.toString()).join('\n');
+      return (schema: schema, ergebnis: e);
+    } finally {
+      db.dispose();
+    }
+  }
+
   /// Schlanke Systeme (z. B. Debian-slim) haben nur `libsqlite3.so.0`
   /// ohne die Entwickler-Verknüpfung `libsqlite3.so`.
   static Sqlite3 get _sqlite {
@@ -455,8 +469,6 @@ class Speicher {
             (db.select('SELECT coalesce(sum(length(daten)), 0) b FROM raum_bloecke').first['b'] as int),
       };
 
-  /// `PRAGMA integrity_check`; `ok` oder die gefundenen Fehler.
-  String pruefen() => db.select('PRAGMA integrity_check').map((r) => r.values.first.toString()).join('\n');
 
   // -------------------------------------------------------------------
   // Kopplung neuer Geräte

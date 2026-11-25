@@ -1,17 +1,31 @@
-# Self-Hosting: Sync-Server plus Caddy für TLS.
+# Self-Hosting oder Hosted-Betrieb: Sync-Server plus Caddy für TLS.
 # 1. In `Caddyfile` die eigene Domain eintragen (DNS muss auf diesen Rechner zeigen).
 # 2. `docker compose up -d --build`
+# Betrieb (Registrierung, Kontingente, Sicherung, Updates): BETRIEB.md
 services:
   sync:
     build: .
     restart: unless-stopped
     environment:
       PT_HINTER_PROXY: "1"
-      # PT_URSPRUNG: "https://tracker.example.org"  # nur diese Web-App zulassen
+      # PT_URSPRUNG: "https://tracker.example.org"   # nur diese Web-App zulassen
+      # PT_REGISTRIERUNG: "einladung"                # offen (Standard) | einladung | zu
+      # PT_MAX_KONTO_MB: "1024"                      # Standard-Kontingent je Konto
+      # PT_OEFFENTLICHE_URL: "https://sync.example.org"  # nur für den föderierten Preiskatalog
     volumes:
       - sync-daten:/daten
     expose:
       - "8743"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/pt-sync", "gesund"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   caddy:
     image: caddy:2
@@ -21,9 +35,16 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # - ../app/build/web:/srv/web:ro               # optional: Web-App mit ausliefern (siehe Caddyfile)
       - caddy-daten:/data
     depends_on:
-      - sync
+      sync:
+        condition: service_healthy
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   sync-daten:

@@ -1,6 +1,6 @@
 # Sync: Kryptografie und Bedrohungsmodell
 
-Stand: M8 (App 0.8.0, Obsidian-Plugin 0.2.2, Agenten-Brücke 0.1.0, Server 1.4.0). Diese Datei soll eine unabhängige Prüfung möglich machen. Die Verfahren sind etabliert, die Bibliotheken auch (pointycastle in der App, `package:crypto` im Server). Eigene Kryptografie gibt es nicht. Der Code steht in `app/lib/core/sync/`, `app/lib/core/vault/`, `obsidian/src/` und `server/lib/src/`. Die Tests liegen in `app/test/core/` (`sync_test.dart`, `vault_test.dart`, `protokoll_test.dart`), `obsidian/test/` und `server/test/`.
+Stand: M9 (App 0.9.0, Obsidian-Plugin 0.2.2, Agenten-Brücke 0.1.0, Server 1.5.0). Diese Datei soll eine unabhängige Prüfung möglich machen. Die Verfahren sind etabliert, die Bibliotheken auch (pointycastle in der App, `package:crypto` im Server). Eigene Kryptografie gibt es nicht. Der Code steht in `app/lib/core/sync/`, `app/lib/core/vault/`, `obsidian/src/` und `server/lib/src/`. Die Tests liegen in `app/test/core/` (`sync_test.dart`, `vault_test.dart`, `protokoll_test.dart`), `obsidian/test/` und `server/test/`.
 
 ## Schlüssel
 
@@ -113,6 +113,16 @@ Ein KI-Agent bekommt Zugriff über die lokale Brücke `pt-agent` ([agent/](../ag
 - **Am Rechner:** Die Zugangsdatei (Token, Kontoschlüssel, Raumschlüssel) ist mit einer Passphrase verschlüsselt (scrypt N=2^15, AES-256-GCM). Klartext hält die Brücke nur im Arbeitsspeicher. Wer Datei und Passphrase hat, liest alles, was das Konto lesen darf.
 - **Nachvollziehbarkeit:** Jeder Werkzeugaufruf erzeugt einen Protokolleintrag ohne Inhalte. Er synchronisiert verschlüsselt und ist in der App sichtbar. Eine manipulierte Brücke könnte das Protokoll auslassen; es ist ein Hilfsmittel, kein Beweis.
 - **Widerruf:** Die App meldet das Agenten-Gerät ab. Was der Agent schon gelesen hat, bleibt bei ihm, bei Bedarf auch an den KI-Anbieter übertragen. Bei Verdacht zusätzlich den Recovery-Schlüssel erneuern.
+
+## Gehosteter Betrieb (M9)
+
+Ein Betreiber, der den Server für andere betreibt, hat dieselbe Sicht wie jeder Server (unten). Zusätzlich gilt ([BETRIEB.md](BETRIEB.md)):
+
+- **Registrierung:** Einladungscodes haben 100 Bit Zufall und gelten einmal. Gespeichert wird nur ihr SHA-256-Hash. Ohne Code legt die App kein Konto an, sie meldet nur bestehende an.
+- **Betreiber-Befehle** zeigen Konto-IDs, Größen, Gerätezahl und Zeitpunkte, nie Inhalte. Löschen geht nur für ganze Konten. Zugriff auf Daten, Schlüssel oder Passwörter gibt es nicht. Deshalb kann der Betreiber auch nicht beim Wiederherstellen helfen.
+- **Kontingente** begrenzen nur Speicher. Ist es voll, lehnt der Server Schreiben ab; lokale Daten bleiben unberührt.
+- **Hosting-Auswahl in der App:** Die Instanz ist beim Bauen eingetragen und beim Verbinden vorausgewählt. Hochgeladen wird erst nach „Verbinden“, „Eigener Server“ ist gleichwertig wählbar.
+- **IP-Adressen** hält der Server nur für die Versuchsbegrenzung im Arbeitsspeicher, rund ein Zeitfenster lang. Sie erscheinen nicht im Betriebsprotokoll.
 
 ## Was der Server sieht
 

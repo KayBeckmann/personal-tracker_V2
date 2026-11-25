@@ -82,10 +82,17 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
   final hex32 = RegExp(r'^[0-9a-f]{32}$');
   final objektId = RegExp(r'^[0-9a-f]{32,64}$');
 
+  var aufgeraeumt = DateTime.now();
+
   void begrenzen(Request r, {int? fenster, String art = 'anmelden'}) {
     var ip = (r.context['shelf.io.connection_info'] as HttpConnectionInfo?)?.remoteAddress.address ?? 'lokal';
     if (k.hinterProxy) ip = r.headers['x-forwarded-for']?.split(',').first.trim() ?? ip;
     final jetzt = DateTime.now();
+    // IP-Adressen nicht länger als ein Fenster im Speicher halten.
+    if (jetzt.difference(aufgeraeumt) > k.fenster ~/ 10) {
+      versuche.removeWhere((_, l) => l.isEmpty || jetzt.difference(l.last) > k.fenster);
+      aufgeraeumt = jetzt;
+    }
     final schluessel = '$art:$ip';
     final liste = (versuche[schluessel] ?? [])..removeWhere((t) => jetzt.difference(t) > k.fenster);
     if (liste.length >= (fenster ?? k.anmeldungenProFenster)) {

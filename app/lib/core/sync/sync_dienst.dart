@@ -419,6 +419,9 @@ class SyncNotifier extends Notifier<SyncStatus> {
     return (code: code, bis: ref.read(uhrProvider)().add(kopplungGueltig));
   }
 
+  /// Zufällige Konto-ID beim Server (für den Support eines Betreibers).
+  Future<String> kontoId() async => (await _verbindung()).konto;
+
   Future<List<SyncGeraet>> geraete() async {
     final v = await _verbindung();
     final k = await _api(v.server, token: v.token).konto();

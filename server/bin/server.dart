@@ -23,7 +23,7 @@ import 'package:shelf/shelf_io.dart' as io;
 ///
 /// Betrieb (siehe BETRIEB.md): `pt-sync einladung [tage]`, `pt-sync konten`,
 /// `pt-sync kontingent <konto> <MiB|standard>`, `pt-sync konto-loeschen <konto>`,
-/// `pt-sync status`, `pt-sync pruefen`.
+/// `pt-sync status`, `pt-sync pruefen [datei]`, `pt-sync gesund` (für Healthchecks).
 ///
 /// `pt-sync sichern <ziel.db>` schreibt eine konsistente Kopie der
 /// Datenbank (auch bei laufendem Server) und beendet sich.
@@ -43,6 +43,37 @@ Future<void> main(List<String> args) async {
     s.sichern(args[1]);
     s.schliessen();
     stdout.writeln('Gesichert nach ${args[1]}');
+    return;
+  }
+  if (args.length == 1 && args.first == 'gesund') {
+    // Healthcheck im Container: fragt den laufenden Server über HTTP.
+    final c = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+    try {
+      final req = await c.getUrl(Uri.parse('http://127.0.0.1:${env['PT_PORT'] ?? '8743'}/v1/gesund')).timeout(const Duration(seconds: 5));
+      final res = await req.close().timeout(const Duration(seconds: 5));
+      final text = await res.transform(utf8.decoder).join();
+      stdout.writeln(text);
+      exitCode = res.statusCode == 200 ? 0 : 1;
+    } catch (e) {
+      stderr.writeln('Nicht erreichbar: $e');
+      exitCode = 1;
+    } finally {
+      c.close(force: true);
+    }
+    return;
+  }
+  if (args.length <= 2 && args.isNotEmpty && args.first == 'pruefen') {
+    // Nur lesend, ohne Migration – auch für Sicherungskopien.
+    try {
+      final p = Speicher.dateiPruefen(args.length == 2 ? args[1] : pfad);
+      final ok = p.ergebnis == 'ok';
+      stdout.writeln(ok ? 'In Ordnung (DB-Schema ${p.schema}).' : p.ergebnis);
+      if (p.schema > dbSchema) stdout.writeln('Hinweis: neuer als dieser Server (Schema $dbSchema).');
+      exitCode = ok ? 0 : 1;
+    } catch (e) {
+      stderr.writeln('Nicht lesbar: $e');
+      exitCode = 1;
+    }
     return;
   }
   if (args.isNotEmpty && _betrieb.contains(args.first)) {
@@ -152,7 +183,7 @@ Future<(int, String)> _abruf(Uri u) async {
   }
 }
 
-const _betrieb = {'einladung', 'konten', 'kontingent', 'konto-loeschen', 'status', 'pruefen'};
+const _betrieb = {'einladung', 'konten', 'kontingent', 'konto-loeschen', 'status'};
 
 String _mib(int b) => (b / (1024 * 1024)).toStringAsFixed(1);
 
@@ -207,10 +238,6 @@ int _betriebsbefehl(Speicher s, List<String> args, String instanz) {
       stdout.writeln('Server $serverVersion, DB-Schema $dbSchema, Instanz $instanz');
       stdout.writeln('${z['konten']} Konten, ${z['geraete']} Geräte, ${z['raeume']} Räume, ${_mib(z['bytes']! as int)} MiB Geheimtext');
       return 0;
-    case ['pruefen']:
-      final e = s.pruefen();
-      stdout.writeln(e == 'ok' ? 'Datenbank in Ordnung.' : e);
-      return e == 'ok' ? 0 : 1;
     default:
       stderr.writeln('Unbekannter Befehl.');
       return 64;

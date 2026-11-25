@@ -21,7 +21,7 @@ Map<String, Object?> neuesKonto([String? einladung]) => {
       'recoveryHuelle': 'H',
       'schluesselPaket': 'P',
       'geraetName': 'g',
-      if (einladung != null) 'einladung': einladung,
+      'einladung': ?einladung,
     };
 
 void main() {
@@ -96,7 +96,7 @@ void main() {
     expect((st, j['ok']), (200, true));
     await anfrage(h, 'POST', '/v1/konten', body: neuesKonto());
     expect(s.zustand()['konten'], 1);
-    expect(s.pruefen(), 'ok');
+
   });
 
   test('Migration 5 → 6 behält Konten', () {
@@ -113,5 +113,10 @@ void main() {
     expect(x.kontenUebersicht().single['kontingent'], isNull);
     expect(x.registrierungAnlegen(), isNotEmpty);
     x.schliessen();
+    // Nur-lesende Prüfung, auch einer Kopie.
+    final p = Speicher.dateiPruefen(pfad);
+    expect((p.schema, p.ergebnis), (dbSchema, 'ok'));
+    File('${d.path}/kaputt.db').writeAsStringSync('kein sqlite');
+    expect(() => Speicher.dateiPruefen('${d.path}/kaputt.db'), throwsA(anything));
   });
 }
