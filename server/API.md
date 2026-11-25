@@ -165,11 +165,12 @@ Der Katalog ist **nicht verschlüsselt** und für andere Instanzen lesbar. Regel
 
 - **Für eigene Konten (angemeldet):**
   - `GET /v1/katalog/ich`: liefert `{"pseudonym", "instanz", "gesperrt", "foederiert"}`.
-  - `POST /v1/katalog/beitraege`: Body `{"typ": "preis", "artikel", "variante"?, "packungsMenge", "packungsEinheit": "stueck|g|kg|ml|l", "kette", "filiale", "region", "preisCent", "waehrung": "EUR", "tag": "JJJJ-MM-TT"}`, oder `{"typ": "bestaetigung"|"rueckzug", "ziel": {"instanz", "id"}}`.
+  - `POST /v1/katalog/beitraege`: Body `{"typ": "preis", "artikel", "variante"?, "ean"?, "packungsMenge", "packungsEinheit": "stueck|g|kg|ml|l", "kette", "ketteSchluessel"?, "filiale", "region", "regionSchluessel"?, "preisCent", "waehrung": "EUR", "tag": "JJJJ-MM-TT"}`, oder `{"typ": "bestaetigung"|"rueckzug", "ziel": {"instanz", "id"}}`.
+    - Seit 1.6.0 (M10): `regionSchluessel` ist der fünfstellige Kreisschlüssel, `ketteSchluessel` ein Schlüssel aus `protokoll/ketten-de.json`, `ean` eine GTIN mit gültiger Prüfziffer. Fehlen die Schlüssel, leitet der Server sie aus `region` bzw. `kette` ab, wenn das eindeutig ist; sonst `400` mit Hinweis. Gespeichert werden dann die festen Namen aus der Liste.
     - `403`: eigenen Preis bestätigen, fremden zurückziehen oder gesperrtes Konto.
     - `404`: Ziel unbekannt.
     - `429`: mehr als 300 Beiträge am Tag.
-  - `GET /v1/katalog/preise?artikel=&kette=&region=`: Preise mit `bestaetigungen`, `bestaetigt`, `eigen`, `vonMir`, `veraltet`.
+  - `GET /v1/katalog/preise?artikel=&ean=&kette=&region=`: Preise mit `bestaetigungen`, `bestaetigt`, `eigen`, `vonMir`, `veraltet`. `artikel` und `ean` gelten als „oder“. `kette` und `region` nehmen einen Schlüssel oder Text; die Antwort enthält `regionSchluessel` und `ketteSchluessel`, sofern sie feststehen oder eindeutig ableitbar sind.
   - `GET /v1/katalog/meine`: eigene, nicht zurückgezogene Beiträge.
 - **Für andere Instanzen (ohne Anmeldung):**
   - `GET /k1/info`: liefert `{"dienst": "personal-tracker-katalog", "api": 1, "instanz": "<url>"}`.

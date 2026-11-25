@@ -1,0 +1,38 @@
+{
+  "hinweis": "Zuordnung freier Eingaben zu Kreis- bzw. Kettenschlüsseln (M10). App und Server prüfen dieselben Fälle. null = nicht eindeutig oder unbekannt.",
+  "regionen": {
+    "Nordwestmecklenburg": "13074",
+    "Nord-West Mecklenburg": "13074",
+    "NWM": "13074",
+    "nwm": "13074",
+    "Landkreis Nordwestmecklenburg": "13074",
+    "LK Nordwestmecklenburg": "13074",
+    "GVM": "13074",
+    "13074": "13074",
+    "Stadt München": "09162",
+    "Landkreis München": "09184",
+    "München": null,
+    "M": null,
+    "Hamburg": "02000",
+    "Freie und Hansestadt Hamburg": "02000",
+    "HH": "02000",
+    "Halle (Saale)": "15002",
+    "Rotenburg (Wümme)": "03357",
+    "Rotenburg Wuemme": "03357",
+    "Region Hannover": "03241",
+    "Musterstadt": null,
+    "": null,
+    "99999": null
+  },
+  "ketten": {
+    "Aldi Süd": "aldi-sued",
+    "ALDI SÜD": "aldi-sued",
+    "aldi sued": "aldi-sued",
+    "Aldi": null,
+    "Netto": "netto",
+    "denn's": "denns",
+    "Müller": "mueller",
+    "E-Center": "edeka",
+    "Tante Emma": null
+  }
+}

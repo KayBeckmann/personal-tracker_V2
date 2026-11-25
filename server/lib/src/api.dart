@@ -12,7 +12,7 @@ import 'speicher.dart';
 /// Version des Sync-Vertrags (Pfadpräfix `/v1`). Innerhalb einer Version
 /// kommen nur Felder hinzu; Clients ignorieren unbekannte Felder.
 const apiVersion = 1;
-const serverVersion = '1.5.0';
+const serverVersion = '1.6.0';
 
 class Konfiguration {
   const Konfiguration({
@@ -400,7 +400,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
     ..get('/v1/katalog/preise', (Request r) {
       final g = angemeldet(r);
       final q = r.url.queryParameters;
-      return _json({'preise': katalog.suchen(konto: g.konto, artikel: q['artikel'], kette: q['kette'], region: q['region'])});
+      return _json({'preise': katalog.suchen(konto: g.konto, artikel: q['artikel'], ean: q['ean'], kette: q['kette'], region: q['region'])});
     })
     ..get('/v1/katalog/meine', (Request r) {
       final g = angemeldet(r);
