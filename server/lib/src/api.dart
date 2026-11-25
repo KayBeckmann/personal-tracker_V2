@@ -6,12 +6,13 @@ import 'dart:typed_data';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
+import 'katalog.dart';
 import 'speicher.dart';
 
 /// Version des Sync-Vertrags (Pfadpräfix `/v1`). Innerhalb einer Version
 /// kommen nur Felder hinzu; Clients ignorieren unbekannte Felder.
 const apiVersion = 1;
-const serverVersion = '1.2.0';
+const serverVersion = '1.3.0';
 
 class Konfiguration {
   const Konfiguration({
@@ -26,6 +27,7 @@ class Konfiguration {
     this.fenster = const Duration(minutes: 10),
     this.hinterProxy = false,
     this.protokoll,
+    this.instanz = 'lokal',
   });
 
   /// Erlaubter Ursprung für die Web-App (CORS). `*` ist vertretbar, weil
@@ -52,6 +54,10 @@ class Konfiguration {
 
   /// Betriebsprotokoll; bekommt nie Inhalte oder Token.
   final void Function(String zeile)? protokoll;
+
+  /// Öffentliche Adresse für den föderierten Katalog (`https://…`);
+  /// `lokal` = Katalog nur auf dieser Instanz.
+  final String instanz;
 }
 
 class _Fehler implements Exception {
@@ -67,19 +73,21 @@ Response _json(Object? daten, {int status = 200}) =>
 /// Der komplette Server als shelf-Handler (auch für Tests im Speicher).
 Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
   final versuche = <String, List<DateTime>>{};
+  final katalog = Katalog(s, instanz: k.instanz);
   final hex64 = RegExp(r'^[0-9a-f]{64}$');
   final hex32 = RegExp(r'^[0-9a-f]{32}$');
   final objektId = RegExp(r'^[0-9a-f]{32,64}$');
 
-  void begrenzen(Request r) {
+  void begrenzen(Request r, {int? fenster, String art = 'anmelden'}) {
     var ip = (r.context['shelf.io.connection_info'] as HttpConnectionInfo?)?.remoteAddress.address ?? 'lokal';
     if (k.hinterProxy) ip = r.headers['x-forwarded-for']?.split(',').first.trim() ?? ip;
     final jetzt = DateTime.now();
-    final liste = (versuche[ip] ?? [])..removeWhere((t) => jetzt.difference(t) > k.fenster);
-    if (liste.length >= k.anmeldungenProFenster) {
+    final schluessel = '$art:$ip';
+    final liste = (versuche[schluessel] ?? [])..removeWhere((t) => jetzt.difference(t) > k.fenster);
+    if (liste.length >= (fenster ?? k.anmeldungenProFenster)) {
       throw _Fehler(429, 'zu-viele', 'Zu viele Versuche. Bitte später erneut.');
     }
-    versuche[ip] = liste..add(jetzt);
+    versuche[schluessel] = liste..add(jetzt);
   }
 
   Future<Map<String, dynamic>> lies(Request r) async {
@@ -272,6 +280,8 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
     })
     ..delete('/v1/konto', (Request r) {
       final g = angemeldet(r);
+      // Öffentliche Katalogbeiträge zurückziehen, dann alles löschen.
+      s.transaktion(() => katalog.kontoEntfernen(g.konto));
       s.kontoLoeschen(g.konto);
       return _json({'ok': true});
     })
@@ -314,6 +324,43 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
     ..get('/v1/bloecke/<id>', (Request r, String id) => blockLesen(r, null, id))
     ..post('/v1/bloecke/fehlend', (Request r) => bloeckeFehlend(r, null))
     ..post('/v1/bloecke/aufraeumen', (Request r) => bloeckeAufraeumen(r, null))
+    // Föderierter Katalog (M7): Konten dieser Instanz …
+    ..get('/v1/katalog/ich', (Request r) {
+      final g = angemeldet(r);
+      final x = katalog.konto(g.konto);
+      return _json({'pseudonym': x.pseudonym, 'instanz': katalog.instanz, 'gesperrt': x.gesperrt, 'foederiert': katalog.foederiert});
+    })
+    ..post('/v1/katalog/beitraege', (Request r) async {
+      final g = angemeldet(r);
+      final j = await lies(r);
+      try {
+        return _json(katalog.beitragen(g.konto, j), status: 201);
+      } on KatalogFehler catch (e) {
+        throw _Fehler(e.status, switch (e.status) { 403 => 'verboten', 404 => 'nicht-gefunden', 429 => 'zu-viele', _ => 'ungueltig' }, e.meldung);
+      }
+    })
+    ..get('/v1/katalog/preise', (Request r) {
+      final g = angemeldet(r);
+      final q = r.url.queryParameters;
+      return _json({'preise': katalog.suchen(konto: g.konto, artikel: q['artikel'], kette: q['kette'], region: q['region'])});
+    })
+    ..get('/v1/katalog/meine', (Request r) {
+      final g = angemeldet(r);
+      return _json({'beitraege': katalog.meine(g.konto)});
+    })
+    // … und für andere Instanzen (öffentlich, ohne Anmeldung).
+    ..get('/k1/info', (Request r) {
+      if (!katalog.foederiert) throw _Fehler(404, 'nicht-gefunden', 'Diese Instanz nimmt nicht am föderierten Katalog teil.');
+      return _json({'dienst': 'personal-tracker-katalog', 'api': 1, 'instanz': katalog.instanz, 'version': serverVersion});
+    })
+    ..get('/k1/feed', (Request r) {
+      if (!katalog.foederiert) throw _Fehler(404, 'nicht-gefunden', 'Diese Instanz nimmt nicht am föderierten Katalog teil.');
+      begrenzen(r, fenster: k.anmeldungenProFenster * 10, art: 'feed');
+      final seit = int.tryParse(r.url.queryParameters['seit'] ?? '0') ?? 0;
+      final max = (int.tryParse(r.url.queryParameters['max'] ?? '') ?? 500).clamp(1, 500);
+      final f = katalog.feed(seit, max);
+      return _json({'eintraege': f.eintraege, 'bis': f.bis, 'mehr': f.mehr, 'peers': katalog.bekannte()});
+    })
     // Geteilte Räume (M5)
     ..get('/v1/raeume', (Request r) {
       final g = angemeldet(r);
