@@ -106,7 +106,7 @@ void main() {
     expect(bericht!.gesendet, a.b.anzahlDatensaetze);
 
     final dump = server.dump();
-    for (final wort in ['Zahnarzt', 'Mülltonne', 'Hochbeet', 'Bäckerei', 'Portemonnaie', 'Giro', 'Miete', '85000', '-450', 'Handy', 'termine', 'buchungen']) {
+    for (final wort in ['Zahnarzt', 'Mülltonne', 'Hochbeet', 'Bäckerei', 'Portemonnaie', 'Miete', '85000', '-450', 'Handy', 'termine', 'buchungen']) {
       expect(dump, isNot(contains(wort)), reason: wort);
     }
     // Weder Recovery-Schlüssel noch Kontoschlüssel liegen dort.

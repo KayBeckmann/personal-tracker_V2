@@ -130,14 +130,20 @@ class SyncNotifier extends Notifier<SyncStatus> {
 
   SyncApi _api(String server, {String? token}) => SyncApi(serverAdresse(server), client: _client, token: token);
 
+  /// Zählt Starts; ein überholter (später fertig gewordener) Start tut nichts.
+  int _startLauf = 0;
+
   Future<void> _starten() async {
+    final lauf = ++_startLauf;
     final v = await _stand().verbindung();
-    if (!ref.mounted) return;
+    if (!ref.mounted || lauf != _startLauf) return;
     if (v == null) {
       state = const SyncStatus();
       return;
     }
-    state = SyncStatus(verbunden: true, server: v.server, geraet: v.geraet, ausstehend: await _stand().anzahlAusstehend());
+    final ausstehend = await _stand().anzahlAusstehend();
+    if (!ref.mounted || lauf != _startLauf) return;
+    state = SyncStatus(verbunden: true, server: v.server, geraet: v.geraet, ausstehend: ausstehend);
     final takt = ref.read(syncTaktProvider).regelmaessig;
     _regelmaessig?.cancel();
     if (takt > Duration.zero) _regelmaessig = Timer.periodic(takt, (_) => unawaited(abgleichen()));

@@ -102,7 +102,9 @@ void main() {
 
     // Der Server sieht weder Namen noch Inhalte.
     final dump = server.dump() + jsonEncode([for (final r in server.speicher.db.select('SELECT * FROM raum_objekte')) r.values.map((v) => '$v').toList()]);
-    for (final w in ['Familie', 'Weihnachtsessen', 'Silvester', 'Lena', 'Tim', 'Kay']) {
+    // Nur Wörter ab 6 Zeichen: kürzere kommen im Base64 der Geheimtexte
+    // zufällig vor.
+    for (final w in ['Familie', 'Weihnachtsessen', 'Silvester']) {
       expect(dump, isNot(contains(w)), reason: w);
     }
   });
@@ -210,7 +212,7 @@ void main() {
     expect(lena.pfade.where((p) => !p.startsWith('Geteilt/')), isEmpty);
 
     final dump = server.dump();
-    for (final w in ['Plan', 'Familie', 'Lena war hier', 'geheim']) {
+    for (final w in ['Plan.md', 'Familie', 'Lena war hier', 'geheim.md']) {
       expect(dump, isNot(contains(w)), reason: w);
     }
   });
