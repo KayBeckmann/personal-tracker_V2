@@ -1,6 +1,6 @@
 # Personal Tracker V2
 
-**Status: Meilensteine M1–M7 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen; dazu Einkaufslisten mit Filialpreisen und ein freiwilliger, föderierter Preiskatalog.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) und [obsidian/](obsidian/README.md) (Plugin). Agenten-Zugang und ein gehostetes Angebot gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
+**Status: Meilensteine M1–M8 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen; dazu Einkaufslisten mit Filialpreisen, ein freiwilliger, föderierter Preiskatalog und ein eng begrenzter Zugang für den eigenen KI-Agenten.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) [obsidian/](obsidian/README.md) (Plugin) und [agent/](agent/README.md) (MCP-Brücke). Ein gehostetes Angebot gibt es noch nicht (M9). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
 
 ## Produktidee
 
@@ -75,6 +75,16 @@ Weitere besprochene Anforderungen sind gezielte private Datei- und Ordnerfreigab
 - **Bestätigung:** Ein neuer Preis gilt erst als bestätigt, wenn eine zweite Person ihn bestätigt, ausdrücklich oder mit demselben Preis. Bestätigte Preise lassen sich als eigene übernehmen; unbestätigte zählen nie in Schätzungen.
 - **Zurückziehen und Sperren:** Zurückziehen wirkt über alle Instanzen, auch das Löschen des Kontos zieht alles zurück. Betreiber können Konten und Instanzen sperren.
 - **Grenze:** Bei offener Föderation kann eine Instanz Identitäten erfinden; eine Bestätigung ist ein Hinweis, kein Beweis. Details: [protokoll/KATALOG.md](protokoll/KATALOG.md).
+
+## Stand M8 (umgesetzt, Abnahme offen)
+
+- **KI-Agent:** Ein eigener Agent (z. B. Claude über MCP) bekommt Zugriff über die lokale Brücke `pt-agent` ([agent/](agent/README.md)). Sie entschlüsselt auf dem eigenen Rechner; der Server sieht weiter nur Geheimtext.
+- **Rechte je Modul:** In der App wählt man je Modul aus, lesen oder schreiben, dazu die Laufzeit: bis zum Widerruf oder 7, 30 oder 90 Tage. Geteilte Einträge sind für den Agenten nur lesbar. Beim Server darf das Agenten-Gerät nichts verwalten.
+- **Nur Vorschläge:** Löschen und Veröffentlichen schlägt der Agent nur vor. Die App zeigt das in der Übersicht, ausgeführt wird erst nach Bestätigung.
+- **Protokoll und Widerruf:** Jeder Zugriff wird ohne Inhalte protokolliert und ist in der App sichtbar. Widerrufen meldet die Brücke sofort ab.
+- **Zugangsdatei:** mit Passphrase verschlüsselt; die Passphrase kann aus `pass` kommen.
+- **Grenze:** Die Modulrechte setzt die Brücke durch, nicht die Kryptografie. Details: [server/SICHERHEIT.md](server/SICHERHEIT.md#ki-agenten-m8).
+- **Server 1.4.0:** DB-Schema 5. App-Schema 7.
 
 ## Mock-ups
 
