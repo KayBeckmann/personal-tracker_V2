@@ -641,7 +641,10 @@ class SyncMotor {
       for (final d in await ablage.lesen(dek, bereich, tx: tx)) {
         if (d['raum'] != r.id) continue;
         final k = SyncStand.schluessel(bereich, d['id'] as String);
-        if (r.eigen) {
+        final ausgang = await stand.ausgang(tx: tx);
+        if (r.eigen || ausgang.containsKey(k)) {
+          // Eigentümer behält alles privat; ein Mitglied behält eine noch
+          // nicht gesendete eigene Änderung als privaten Eintrag.
           await ablage.schreiben(dek, bereich, d['id'] as String, {...d}..remove('raum'), tx: tx);
           await stand.vormerken(bereich, d['id'] as String, tx: tx);
         } else {
@@ -655,6 +658,11 @@ class SyncMotor {
       if (!drin) continue;
       final k = SyncStand.schluessel(vaultBereich, d.id);
       if (r.eigen) {
+        await stand.vormerken(vaultBereich, d.id, tx: tx);
+      } else if ((await stand.ausgang(tx: tx)).containsKey(k) && r.ordner != null && d.pfad.startsWith('${r.ordner}/')) {
+        // Nicht gesendete eigene Änderung: privat unter „Eigene Änderungen“.
+        final ziel = 'Eigene Änderungen/${r.name.replaceAll('/', '-')}/${d.pfad.substring(r.ordner!.length + 1)}';
+        await vault.schreiben(d.kopie(pfad: ziel, blockOrt: () => null), tx: tx);
         await stand.vormerken(vaultBereich, d.id, tx: tx);
       } else {
         await vault.loeschen(d.id, tx: tx);

@@ -226,4 +226,26 @@ void main() {
     await expectLater(lena.raeume.annehmen(code.text), throwsA(isA<RaumFehler>()));
     expect(lena.raum('Haushalt').recht, 'schreiben');
   });
+
+  test('Offline geändert, dann entfernt: die eigene Änderung bleibt privat erhalten, nichts geht an den Raum', () async {
+    final kay = await person('Kay');
+    final lena = await person('Lena');
+    final fam = await kay.raeume.anlegen(art: RaumArt.kalender, name: 'Familie');
+    await einladenUndAnnehmen(kay, fam, lena, 'schreiben');
+    await kay.g.s.speichereTermin(termin('fest-1', 'Fest', raum: fam.id));
+    await kay.g.s.speichereTermin(termin('fest-2', 'Zweites Fest', raum: fam.id));
+    await kay.sync();
+    await lena.sync();
+    // Lena ändert offline …
+    await lena.g.s.speichereTermin(lena.g.b.termine['fest-1']!.kopie(titel: 'Fest (Lenas Notizen)'));
+    // … und wird währenddessen entfernt.
+    await kay.raeume.entfernen(kay.raum('Familie'), kay.raum('Familie').mitglieder.single);
+    await lena.sync();
+    expect(lena.g.b.raeume, isEmpty);
+    expect(lena.g.b.termine['fest-1']!.titel, 'Fest (Lenas Notizen)');
+    expect(lena.g.b.termine['fest-1']!.raum, isNull);
+    expect(lena.g.b.termine.containsKey('fest-2'), isFalse);
+    await kay.sync();
+    expect(kay.g.b.termine['fest-1']!.titel, 'Fest');
+  });
 }

@@ -406,6 +406,11 @@ export class VaultAbgleich {
       if (!e) continue;
       if (r.eigen) {
         this.vormerken(id);
+      } else if (this.z.ausgang[id] && r.ordner && e.pfad.startsWith(`${r.ordner}/`)) {
+        // Nicht gesendete eigene Änderung: privat unter „Eigene Änderungen“.
+        const ziel = `Eigene Änderungen/${r.j.name.replace(/\//g, '-')}/${e.pfad.slice(r.ordner.length + 1)}`;
+        Object.assign(e, await this.fs.verschieben(e.pfad, ziel), { pfad: ziel });
+        this.vormerken(id);
       } else {
         delete this.z.ausgang[id];
         delete this.z.dateien[id];
