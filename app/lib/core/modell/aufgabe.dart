@@ -40,6 +40,7 @@ class Aufgabe {
     this.erledigt,
     this.verlauf = const [],
     required this.geaendert,
+    this.raum,
   });
 
   /// Höchstens so viele Runden bleiben im Verlauf.
@@ -64,6 +65,9 @@ class Aufgabe {
   final List<Runde> verlauf;
   final DateTime geaendert;
 
+  /// Geteilter Kalender bzw. geteilte Liste (Raum-ID); `null` = privat.
+  final String? raum;
+
   bool get offen => erledigt == null;
 
   /// Zeitpunkt der Erinnerung oder `null`.
@@ -84,6 +88,7 @@ class Aufgabe {
     DateTime? Function()? erledigt,
     List<Runde>? verlauf,
     DateTime? geaendert,
+    String? Function()? raum,
   }) =>
       Aufgabe(
         id: id,
@@ -97,6 +102,7 @@ class Aufgabe {
         erledigt: erledigt != null ? erledigt() : this.erledigt,
         verlauf: verlauf ?? this.verlauf,
         geaendert: geaendert ?? this.geaendert,
+        raum: raum != null ? raum() : this.raum,
       );
 
   /// Abhaken am [jetzt]. Wiederkehrend: Runde in den Verlauf, nächste
@@ -169,6 +175,7 @@ class Aufgabe {
         if (erledigt != null) 'erledigt': erledigt!.toUtc().toIso8601String(),
         if (verlauf.isNotEmpty) 'verlauf': [for (final r in verlauf) r.toJson()],
         'geaendert': geaendert.toUtc().toIso8601String(),
+        if (raum != null) 'raum': raum,
       };
 
   static Aufgabe fromJson(Map<String, dynamic> j) => Aufgabe(
@@ -185,5 +192,6 @@ class Aufgabe {
         erledigt: j['erledigt'] == null ? null : DateTime.parse(j['erledigt'] as String),
         verlauf: [for (final r in (j['verlauf'] as List?) ?? const []) Runde.fromJson((r as Map).cast<String, dynamic>())],
         geaendert: DateTime.parse(j['geaendert'] as String),
+        raum: j['raum'] as String?,
       );
 }

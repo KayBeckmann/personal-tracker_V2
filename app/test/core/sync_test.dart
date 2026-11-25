@@ -53,7 +53,15 @@ class Geraet {
   Bestand get b => c.read(bestandProvider);
   Entsperrt get offen => c.read(sitzungProvider) as Entsperrt;
 
+  /// Ein Abgleich, der beim Start/Einrichten von selbst angestoßen wurde,
+  /// soll fertig sein, bevor ein Test weitermacht.
+  Future<void> ruhig() async {
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await sync.leerlauf();
+  }
+
   Future<void> abgleichen() async {
+    await ruhig();
     await sync.abgleichen();
     expect(status.fehler, isNull, reason: status.fehler);
   }
@@ -394,7 +402,7 @@ void main() {
     final (a, b, _) = await zweiGeraete();
     final v = (await SyncStand(a.ablage, a.offen.dek).verbindung())!;
     final daten = v.schluessel.verschluesseln(Umschlag(bereich: 'notizen', id: 'zukunft', schema: aktuellesSchema + 1, daten: {'id': 'zukunft'}));
-    server.speicher.schreiben(v.konto, [(id: v.schluessel.objektId('notizen', 'zukunft'), basis: 0, aenderung: 'z', daten: daten)]);
+    server.speicher.schreiben(Ort.konto(v.konto), [(id: v.schluessel.objektId('notizen', 'zukunft'), basis: 0, aenderung: 'z', daten: daten)]);
     final vorher = vergleichbar(b.b);
     await b.sync.abgleichen();
     expect(b.status.fehlerArt, SyncFehlerArt.version);
@@ -406,12 +414,12 @@ void main() {
     final v = (await SyncStand(a.ablage, a.offen.dek).verbindung())!;
     // Server (Angreifer) legt ein Objekt mit fremdem Schlüssel ab …
     final fremd = Kontoschluessel.neu();
-    server.speicher.schreiben(v.konto, [
+    server.speicher.schreiben(Ort.konto(v.konto), [
       (id: fremd.objektId('notizen', 'boese'), basis: 0, aenderung: 'b1', daten: fremd.verschluesseln(const Umschlag(bereich: 'notizen', id: 'boese', schema: 3, daten: {'id': 'boese'}))),
     ]);
     // … und kopiert den Geheimtext von n1 unter eine andere ID.
     final n1 = server.speicher.db.select('SELECT daten FROM objekte WHERE id = ?', [v.schluessel.objektId('notizen', 'n1')]).first['daten'] as String;
-    server.speicher.schreiben(v.konto, [(id: v.schluessel.objektId('notizen', 'kopie'), basis: 0, aenderung: 'b2', daten: n1)]);
+    server.speicher.schreiben(Ort.konto(v.konto), [(id: v.schluessel.objektId('notizen', 'kopie'), basis: 0, aenderung: 'b2', daten: n1)]);
     await b.sync.abgleichen();
     expect(b.status.fehler, contains('2 Einträge'));
     expect(b.b.notizen.keys, isNot(contains('boese')));

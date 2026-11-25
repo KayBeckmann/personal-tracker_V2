@@ -250,7 +250,7 @@ class Plan {
 
 /// Persönliche Einstellungen (verschlüsselt gespeichert).
 class Einstellungen {
-  const Einstellungen({this.ausgabenrahmenCent, this.erinnerungMitTitel = false, this.letzteSicherung, this.vaultMaxMiB = 100});
+  const Einstellungen({this.ausgabenrahmenCent, this.erinnerungMitTitel = false, this.letzteSicherung, this.vaultMaxMiB = 100, this.anzeigeName});
 
   /// Selbst gesetzter monatlicher Ausgabenrahmen — getrennt von der
   /// berechneten Prognose.
@@ -265,12 +265,16 @@ class Einstellungen {
   /// lokal und werden als „zu groß“ angezeigt.
   final int vaultMaxMiB;
 
-  Einstellungen kopie({int? Function()? ausgabenrahmenCent, bool? erinnerungMitTitel, DateTime? letzteSicherung, int? vaultMaxMiB}) =>
+  /// Name, unter dem andere dich bei Freigaben sehen.
+  final String? anzeigeName;
+
+  Einstellungen kopie({int? Function()? ausgabenrahmenCent, bool? erinnerungMitTitel, DateTime? letzteSicherung, int? vaultMaxMiB, String? anzeigeName}) =>
       Einstellungen(
         ausgabenrahmenCent: ausgabenrahmenCent != null ? ausgabenrahmenCent() : this.ausgabenrahmenCent,
         erinnerungMitTitel: erinnerungMitTitel ?? this.erinnerungMitTitel,
         letzteSicherung: letzteSicherung ?? this.letzteSicherung,
         vaultMaxMiB: vaultMaxMiB ?? this.vaultMaxMiB,
+        anzeigeName: anzeigeName ?? this.anzeigeName,
       );
 
   Map<String, dynamic> toJson() => {
@@ -279,6 +283,7 @@ class Einstellungen {
         'erinnerungMitTitel': erinnerungMitTitel,
         if (letzteSicherung != null) 'letzteSicherung': letzteSicherung!.toUtc().toIso8601String(),
         if (vaultMaxMiB != 100) 'vaultMaxMiB': vaultMaxMiB,
+        if (anzeigeName != null) 'anzeigeName': anzeigeName,
       };
 
   static Einstellungen fromJson(Map<String, dynamic> j) => Einstellungen(
@@ -286,5 +291,6 @@ class Einstellungen {
         erinnerungMitTitel: j['erinnerungMitTitel'] == true,
         letzteSicherung: j['letzteSicherung'] == null ? null : DateTime.parse(j['letzteSicherung'] as String),
         vaultMaxMiB: (j['vaultMaxMiB'] as int?) ?? 100,
+        anzeigeName: j['anzeigeName'] as String?,
       );
 }

@@ -177,6 +177,13 @@ class SyncNotifier extends Notifier<SyncStatus> {
     });
   }
 
+  /// Wartet, bis kein Abgleich mehr läuft oder ansteht.
+  Future<void> leerlauf() async {
+    while (_laufend != null || _wartend != null) {
+      await (_wartend ?? _laufend);
+    }
+  }
+
   Future<SyncBericht?> _beginnen() => _laufend = _abgleichen().whenComplete(() => _laufend = null);
 
   Future<SyncBericht?> _abgleichen() async {

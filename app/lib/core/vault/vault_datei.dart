@@ -33,6 +33,7 @@ class VaultDatei {
     this.inhalt,
     this.bloecke = const [],
     required this.geaendert,
+    this.blockOrt,
   });
 
   final String id;
@@ -49,21 +50,33 @@ class VaultDatei {
   final List<BlockRef> bloecke;
   final DateTime geaendert;
 
+  /// Nur lokal: in welchem geteilten Raum die [bloecke] liegen (`null` =
+  /// eigenes Konto). Block-IDs hängen vom Schlüssel des Orts ab.
+  final String? blockOrt;
+
   String get name => pfad.split('/').last;
   String get ordner => pfad.contains('/') ? pfad.substring(0, pfad.lastIndexOf('/')) : '';
   String get endung => name.contains('.') ? name.substring(name.lastIndexOf('.') + 1).toLowerCase() : '';
   bool get istMarkdown => endung == 'md';
   bool get istBild => const {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}.contains(endung);
 
-  VaultDatei kopie({String? id, String? pfad, DateTime? geaendert}) => VaultDatei(
+  VaultDatei kopie({String? id, String? pfad, DateTime? geaendert, List<BlockRef>? bloecke, String? Function()? blockOrt}) => VaultDatei(
         id: id ?? this.id,
         pfad: pfad ?? this.pfad,
         groesse: groesse,
         sha256: sha256,
         inhalt: inhalt,
-        bloecke: bloecke,
+        bloecke: bloecke ?? this.bloecke,
         geaendert: geaendert ?? this.geaendert,
+        blockOrt: blockOrt != null ? blockOrt() : this.blockOrt,
       );
+
+  /// Was zum Server geht: ohne lokale Felder, Pfad relativ zu [wurzel].
+  Map<String, dynamic> zumSenden({String? wurzel}) {
+    final j = toJson()..remove('blockOrt');
+    if (wurzel != null) j['pfad'] = pfad.substring(wurzel.length + 1);
+    return j;
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -73,6 +86,7 @@ class VaultDatei {
         if (inhalt != null) 'inhalt': base64Encode(inhalt!),
         if (inhalt == null) 'bloecke': [for (final b in bloecke) {'id': b.id, 'groesse': b.groesse}],
         'geaendert': geaendert.toUtc().toIso8601String(),
+        if (blockOrt != null) 'blockOrt': blockOrt,
       };
 
   static VaultDatei fromJson(Map<String, dynamic> j) => VaultDatei(
@@ -86,10 +100,37 @@ class VaultDatei {
             (id: b['id'] as String, groesse: b['groesse'] as int),
         ],
         geaendert: DateTime.parse(j['geaendert'] as String),
+        blockOrt: j['blockOrt'] as String?,
       );
 }
 
 String sha256Hex(List<int> daten) => sha256.convert(daten).toString();
+
+/// Datei-Datensatz aus einem Inhalt; große Inhalte in Blöcken mit
+/// [blockId] des Orts (Konto oder Raum). Die Klartext-Blöcke kommen in
+/// [neueBloecke].
+VaultDatei vaultDateiAus({
+  required String id,
+  required String pfad,
+  required Uint8List inhalt,
+  required DateTime geaendert,
+  required String Function(Uint8List) blockId,
+  String? blockOrt,
+  Map<String, Uint8List>? neueBloecke,
+}) {
+  final hash = sha256Hex(inhalt);
+  if (inhalt.length <= vaultInlineGrenze) {
+    return VaultDatei(id: id, pfad: pfad, groesse: inhalt.length, sha256: hash, inhalt: inhalt, geaendert: geaendert);
+  }
+  final refs = <BlockRef>[];
+  for (var i = 0; i < inhalt.length; i += vaultBlockGroesse) {
+    final teil = Uint8List.sublistView(inhalt, i, i + vaultBlockGroesse > inhalt.length ? inhalt.length : i + vaultBlockGroesse);
+    final bid = blockId(teil);
+    refs.add((id: bid, groesse: teil.length));
+    neueBloecke?[bid] = teil;
+  }
+  return VaultDatei(id: id, pfad: pfad, groesse: inhalt.length, sha256: hash, bloecke: refs, geaendert: geaendert, blockOrt: blockOrt);
+}
 
 /// Prüft und normalisiert einen Vault-Pfad. Wirft bei absoluten Pfaden,
 /// `..`, leeren Teilen oder Steuerzeichen — ein Objekt vom Server darf
@@ -165,26 +206,13 @@ extension VaultKrypto on Kontoschluessel {
     return blockId(inhalt) == id ? inhalt : null;
   }
 
-  /// Datei-Datensatz aus einem Inhalt bilden. Große Inhalte werden in
-  /// Blöcke geteilt; die verschlüsselten Blöcke kommen in [neueBloecke].
+  /// Datei-Datensatz aus einem Inhalt bilden (Blöcke im eigenen Konto).
   VaultDatei vaultDatei({
     required String id,
     required String pfad,
     required Uint8List inhalt,
     required DateTime geaendert,
     Map<String, Uint8List>? neueBloecke,
-  }) {
-    final hash = sha256Hex(inhalt);
-    if (inhalt.length <= vaultInlineGrenze) {
-      return VaultDatei(id: id, pfad: pfad, groesse: inhalt.length, sha256: hash, inhalt: inhalt, geaendert: geaendert);
-    }
-    final refs = <BlockRef>[];
-    for (var i = 0; i < inhalt.length; i += vaultBlockGroesse) {
-      final teil = Uint8List.sublistView(inhalt, i, i + vaultBlockGroesse > inhalt.length ? inhalt.length : i + vaultBlockGroesse);
-      final bid = blockId(teil);
-      refs.add((id: bid, groesse: teil.length));
-      neueBloecke?[bid] = teil;
-    }
-    return VaultDatei(id: id, pfad: pfad, groesse: inhalt.length, sha256: hash, bloecke: refs, geaendert: geaendert);
-  }
+  }) =>
+      vaultDateiAus(id: id, pfad: pfad, inhalt: inhalt, geaendert: geaendert, blockId: blockId, neueBloecke: neueBloecke);
 }

@@ -53,6 +53,7 @@ class Termin {
     this.ausnahmen = const {},
     this.erinnerungMinuten,
     required this.geaendert,
+    this.raum,
   });
 
   final String id;
@@ -73,6 +74,9 @@ class Termin {
   /// vor 09:00 am Tag.
   final int? erinnerungMinuten;
   final DateTime geaendert;
+
+  /// Geteilter Kalender bzw. geteilte Liste (Raum-ID); `null` = privat.
+  final String? raum;
 
   /// Dauer eines Termins mit Uhrzeit.
   Duration get dauer => ganztaegig || ende == null ? Duration.zero : ende!.difference(beginn);
@@ -96,6 +100,7 @@ class Termin {
     Set<String>? ausnahmen,
     int? Function()? erinnerungMinuten,
     DateTime? geaendert,
+    String? Function()? raum,
   }) =>
       Termin(
         id: id,
@@ -109,6 +114,7 @@ class Termin {
         ausnahmen: ausnahmen ?? this.ausnahmen,
         erinnerungMinuten: erinnerungMinuten != null ? erinnerungMinuten() : this.erinnerungMinuten,
         geaendert: geaendert ?? this.geaendert,
+        raum: raum != null ? raum() : this.raum,
       );
 
   Map<String, dynamic> toJson() => {
@@ -123,6 +129,7 @@ class Termin {
         if (ausnahmen.isNotEmpty) 'ausnahmen': (ausnahmen.toList()..sort()),
         if (erinnerungMinuten != null) 'erinnerungMinuten': erinnerungMinuten,
         'geaendert': geaendert.toUtc().toIso8601String(),
+        if (raum != null) 'raum': raum,
       };
 
   static Termin fromJson(Map<String, dynamic> j) => Termin(
@@ -139,6 +146,7 @@ class Termin {
         ausnahmen: {...((j['ausnahmen'] as List?) ?? const []).cast<String>()},
         erinnerungMinuten: j['erinnerungMinuten'] as int?,
         geaendert: DateTime.parse(j['geaendert'] as String),
+        raum: j['raum'] as String?,
       );
 }
 

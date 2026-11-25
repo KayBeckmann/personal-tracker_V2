@@ -6,7 +6,8 @@
 /// - 2: M2 (zusätzlich Aufgaben)
 /// - 3: M3 (zusätzlich Konflikt-Fassungen aus dem Sync)
 /// - 4: M4 (Vault-Dateien im Sync; Einstellung zur Dateigrenze)
-const aktuellesSchema = 4;
+/// - 5: M5 (geteilte Räume; Termine und Aufgaben mit optionalem Raum)
+const aktuellesSchema = 5;
 
 /// Rohdaten: Bereich → Datensätze (Klartext-JSON).
 typedef Rohdaten = Map<String, List<Map<String, dynamic>>>;
@@ -14,7 +15,7 @@ typedef Rohdaten = Map<String, List<Map<String, dynamic>>>;
 /// Migration von Version `n` auf `n + 1`.
 typedef Migration = Rohdaten Function(Rohdaten daten);
 
-const Map<int, Migration> migrationen = {1: _v1zuV2, 2: _v2zuV3, 3: _v3zuV4};
+const Map<int, Migration> migrationen = {1: _v1zuV2, 2: _v2zuV3, 3: _v3zuV4, 4: _v4zuV5};
 
 /// Schema 2 ergänzt nur den Bereich „aufgaben“; vorhandene Datensätze
 /// bleiben unverändert. Die Versionsnummer steigt trotzdem, damit eine
@@ -29,6 +30,10 @@ Rohdaten _v2zuV3(Rohdaten d) => {...d, 'konflikte': d['konflikte'] ?? []};
 /// Vault-Dateien im Sync, die eine ältere App nicht kennt; sie soll dann
 /// „App aktualisieren“ melden, statt sie zu übergehen.
 Rohdaten _v3zuV4(Rohdaten d) => d;
+
+/// Schema 5 ergänzt den Bereich „raeume“; vorhandene Datensätze bleiben
+/// privat (ohne `raum`).
+Rohdaten _v4zuV5(Rohdaten d) => {...d, 'raeume': d['raeume'] ?? []};
 
 class SchemaFehler implements Exception {
   SchemaFehler(this.meldung);

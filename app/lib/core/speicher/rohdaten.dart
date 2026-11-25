@@ -4,6 +4,7 @@ import '../modell/finanzen.dart';
 import '../modell/konflikt.dart';
 import '../modell/notiz.dart';
 import '../modell/termin.dart';
+import '../raeume/raum.dart';
 import 'backup.dart';
 import 'schema.dart';
 
@@ -15,6 +16,7 @@ Rohdaten rohdatenVon(Bestand b) => {
       'buchungen': [for (final x in b.buchungen.values) x.toJson()],
       'plaene': [for (final p in b.plaene.values) p.toJson()],
       'konflikte': [for (final k in b.konflikte.values) k.toJson()],
+      'raeume': [for (final r in b.raeume.values) r.toJson()],
       'einstellungen': [b.einstellungen.toJson()],
     };
 
@@ -49,6 +51,7 @@ Bestand bestandAus(Rohdaten d) {
     buchungen: buchungen,
     plaene: plaene,
     konflikte: bereich('konflikte', Konflikt.fromJson, (k) => k.id),
+    raeume: bereich('raeume', Raum.fromJson, (r) => r.id),
     einstellungen: einst.isEmpty ? const Einstellungen() : lies('einstellungen', einst.first, Einstellungen.fromJson),
   );
 }
