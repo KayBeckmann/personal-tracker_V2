@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.9.1+10
+version: 0.10.0+11
 
 environment:
   sdk: ^3.13.5
@@ -54,6 +54,7 @@ dependencies:
   http: ^1.6.0
   archive: ^4.7.1
   geolocator: ^14.0.1
+  mobile_scanner: ^7.5.0
 
 dev_dependencies:
   flutter_test:
@@ -79,6 +80,11 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # M10: feste Regionen und Ketten (Kopien aus protokoll/, siehe protokoll/REGIONEN.md).
+  assets:
+    - assets/regionen-de.json
+    - assets/ketten-de.json
 
   # Mitgeliefert, damit Web und Android offline dieselbe Schrift haben und
   # nichts von einem Schrift-CDN nachgeladen wird (Lizenz: assets/fonts/OFL.txt).

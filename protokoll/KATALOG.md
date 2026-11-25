@@ -7,13 +7,24 @@ Der Katalog ist **freiwillig und öffentlich**. Anders als alle übrigen Daten i
 - **Zwei Schalter:** In der App lassen sich „Preise anderer lesen“ und „Eigene Preise veröffentlichen“ einzeln einschalten. Beide sind standardmäßig aus.
 - **Veröffentlicht wird nur je Preis und bewusst:** Beim Erfassen eines Preises die Option ankreuzen und die Vorschau des Öffentlichen bestätigen.
 - **Was öffentlich wird:**
-  - Artikel und Variante;
+  - Artikel und Variante, optional die EAN;
   - Packungsgröße mit Einheit (Stück, g, kg, ml, l);
-  - Kette, Filialname und Region;
+  - Kette, Filialname und Region (Kreis) mit ihren Schlüsseln;
   - Preis in Euro;
   - Tag der Beobachtung;
   - dazu ein **Pseudonym** je Konto (`p-…@<instanz>`).
 - **Nie öffentlich:** Position, Listen, Einkäufe, Buchungen, Name, Konto-ID.
+
+## Feste Regionen, Ketten und EAN (M10)
+
+Damit „NWM“, „Nordwestmecklenburg“ und „Nord-West Mecklenburg“ dieselbe Region sind, gilt ab Server 1.6.0:
+
+- **Region = Landkreis oder kreisfreie Stadt** mit dem amtlichen fünfstelligen Kreisschlüssel (`regionSchluessel`, z. B. `13074` für Nordwestmecklenburg). Die App bietet nur Einträge aus der Liste an, suchbar nach Name, Kfz-Kennzeichen, Postleitzahl und Ort; aus einer gespeicherten Position schlägt sie den Kreis vor. Daten und Quellen: [REGIONEN.md](REGIONEN.md).
+- **Kette** aus einer festen Liste (`ketteSchluessel`, [ketten-de.json](ketten-de.json)). Andere Läden lassen sich privat anlegen, aber nicht veröffentlichen.
+- **EAN** (`ean`, GTIN-8/12/13/14 mit Prüfziffer) ist optional. Ist sie gesetzt, gilt sie statt Artikelname und Variante als Artikel. Zwei Personen bestätigen sich also auch dann, wenn sie das Produkt verschieden nennen.
+- **Eigene Beiträge** brauchen Region und Kette aus der Liste. Fehlen die Schlüssel (ältere App), leitet der Server sie aus dem Text ab, wenn das eindeutig ist, und lehnt sonst mit Hinweis ab. Gespeichert werden die festen Namen.
+- **Ältere Beiträge** anderer Instanzen mit freiem Text bleiben gültig. Ist der Text eindeutig (z. B. „GVM“), zählen sie zur Region; sonst nur unter genau ihrem Text.
+- **Abgleich mit freier Eingabe:** Vergleich ohne Groß-/Kleinschreibung, Umlaute ausgeschrieben, nur Buchstaben und Ziffern. Zugeordnet wird nur, was genau einen Kreis bzw. eine Kette trifft („München“ ist mehrdeutig, „Stadt München“ nicht). Testfälle für App und Server: [regionen-testfaelle.json](regionen-testfaelle.json).
 
 ## Föderation (offen)
 

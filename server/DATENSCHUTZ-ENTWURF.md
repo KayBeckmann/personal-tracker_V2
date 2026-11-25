@@ -1,6 +1,6 @@
 # Datenschutzhinweise für den gehosteten Sync – ENTWURF
 
-> **Entwurf, nicht veröffentlichen.** Technische Grundlage für eine Datenschutzerklärung des Betreibers. Er ersetzt keine Rechtsberatung. Platzhalter in `[eckigen Klammern]` füllt der Betreiber. Rechtsgrundlagen, Fristen und Formulierungen sind juristisch zu prüfen. Stand: Server 1.5.0.
+> **Entwurf, nicht veröffentlichen.** Technische Grundlage für eine Datenschutzerklärung des Betreibers. Er ersetzt keine Rechtsberatung. Platzhalter in `[eckigen Klammern]` füllt der Betreiber. Rechtsgrundlagen, Fristen und Formulierungen sind juristisch zu prüfen. Stand: Server 1.6.0.
 
 ## Verantwortlicher
 
@@ -29,7 +29,7 @@ Der Dienst speichert verschlüsselte Daten der Personal-Tracker-App, damit mehre
 
 ## Freiwilliger öffentlicher Preiskatalog
 
-Nur wer in der App „Eigene Preise veröffentlichen“ einschaltet **und** einen einzelnen Preis bewusst veröffentlicht, gibt diese Angaben öffentlich preis: Artikel, Packung, Kette, Filiale, Region, Preis, Tag, dazu ein Pseudonym je Konto. Diese Angaben sind **nicht** verschlüsselt. Sie werden an andere teilnehmende Instanzen weitergegeben (Föderation) und dort gespeichert. Ein Zurückziehen erreicht alle Instanzen, die sich an das Protokoll halten. Bereits abgerufene Kopien lassen sich aber nicht erzwingbar löschen. Nie öffentlich sind Position, Listen, Einkäufe und Namen.
+Nur wer in der App „Eigene Preise veröffentlichen“ einschaltet **und** einen einzelnen Preis bewusst veröffentlicht, gibt diese Angaben öffentlich preis: Artikel (optional mit EAN), Packung, Kette, Filiale, Region (Landkreis), Preis, Tag, dazu ein Pseudonym je Konto. Diese Angaben sind **nicht** verschlüsselt. Sie werden an andere teilnehmende Instanzen weitergegeben (Föderation) und dort gespeichert. Ein Zurückziehen erreicht alle Instanzen, die sich an das Protokoll halten. Bereits abgerufene Kopien lassen sich aber nicht erzwingbar löschen. Nie öffentlich sind Position, Listen, Einkäufe und Namen.
 
 ## KI-Agenten
 

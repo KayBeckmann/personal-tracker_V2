@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:personal_tracker/core/modell/einkauf.dart';
 import 'package:personal_tracker/core/modell/finanzen.dart';
+import 'package:personal_tracker/core/regionen/regionen.dart';
 import 'package:personal_tracker/core/sitzung.dart';
 
 import 'package:personal_tracker/ui/format.dart';
@@ -87,5 +89,62 @@ void main() {
     await tester.pumpAndSettle();
     await tippe(tester, 'naechste-filiale');
     expect(find.textContaining('Ohne Standortfreigabe'), findsOneWidget);
+  });
+
+  testWidgets('M10: Kette und Region aus der Liste, alte Region zuordnen, Barcode eintippen und wiedererkennen', (tester) async {
+    final g = TestGeraet();
+    final c = await appStarten(tester, g, groesse: breit);
+    await direktEinrichten(tester, c);
+    await tester.runAsync(() => c.read(regionenProvider.future));
+    await tippe(tester, 'nav-einkauf');
+
+    // Neue Filiale: Kette aus den Vorschlägen, Region über das Kfz-Kennzeichen.
+    await tippe(tester, 'filiale-neu');
+    await schreibe(tester, 'filiale-kette', 'lid');
+    await tester.pumpAndSettle();
+    await tippe(tester, 'kette-lidl');
+    await schreibe(tester, 'filiale-name', 'Hafen');
+    await tippe(tester, 'filiale-region');
+    expect(find.byKey(const Key('region-quellen')), findsOneWidget);
+    await schreibe(tester, 'region-suche', 'NWM');
+    await tester.pumpAndSettle();
+    await tippe(tester, 'region-13074');
+    expect(find.text('Nordwestmecklenburg (Landkreis, Mecklenburg-Vorpommern)'), findsOneWidget);
+    await tippe(tester, 'filiale-speichern');
+    final neu = c.read(bestandProvider).filialen.values.single;
+    expect([neu.kette, neu.ketteSchluessel, neu.region, neu.regionSchluessel], ['Lidl', 'lidl', 'Nordwestmecklenburg', '13074']);
+
+    // Ältere Filiale mit frei eingetippter Region: Hinweis und Vorschlag.
+    await tester.runAsync(() => c.read(sitzungProvider.notifier).speichereFiliale(
+        Filiale(id: 'alt', kette: 'Dorfladen', name: 'Markt', region: 'GVM', geaendert: DateTime.utc(2026))));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Region „GVM“ zuordnen'), findsOneWidget);
+    await tippe(tester, 'filiale-Markt');
+    expect(find.textContaining('„GVM“ – bitte aus der Liste wählen'), findsOneWidget);
+    await tippe(tester, 'filiale-region-vorschlag');
+    await tippe(tester, 'filiale-speichern');
+    final alt = c.read(bestandProvider).filialen['alt']!;
+    expect([alt.region, alt.regionSchluessel, alt.ketteSchluessel], ['Nordwestmecklenburg', '13074', null]);
+
+    // Posten mit Barcode; ein ungültiger wird abgelehnt.
+    await tippe(tester, 'liste-neu');
+    await schreibe(tester, 'liste-name', 'Woche');
+    await tippe(tester, 'liste-speichern');
+    await tippe(tester, 'liste-Woche');
+    await tippe(tester, 'posten-neu');
+    await schreibe(tester, 'posten-name', 'Hafermilch');
+    await schreibe(tester, 'posten-ean', '4006381333932');
+    await tippe(tester, 'posten-speichern');
+    expect(find.textContaining('Barcode ist ungültig'), findsOneWidget);
+    await schreibe(tester, 'posten-ean', '4006381333931');
+    await tippe(tester, 'posten-speichern');
+    expect(c.read(bestandProvider).posten.values.single.ean, '4006381333931');
+
+    // Über den Scanner (hier: Nummer eintippen) wird der bekannte Artikel erkannt.
+    await tippe(tester, 'posten-scannen-neu');
+    await schreibe(tester, 'scanner-eingabe', '4006381333931');
+    await tippe(tester, 'scanner-uebernehmen');
+    expect(tester.widget<TextField>(find.byKey(const Key('posten-name'))).controller!.text, 'Hafermilch');
+    expect(tester.widget<TextField>(find.byKey(const Key('posten-ean'))).controller!.text, '4006381333931');
   });
 }

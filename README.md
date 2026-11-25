@@ -2,7 +2,7 @@
 
 <img src="app/assets/logo/logo-wortmarke.svg" alt="personaltracker" width="320">
 
-**Status: Meilensteine M1–M9 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen; dazu Einkaufslisten mit Filialpreisen, ein freiwilliger, föderierter Preiskatalog und ein eng begrenzter Zugang für den eigenen KI-Agenten; betriebsfertig für Self-Hosting und ein gehostetes Angebot.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) [obsidian/](obsidian/README.md) (Plugin) und [agent/](agent/README.md) (MCP-Brücke). Ein gehostetes Angebot ist technisch vorbereitet, aber **nicht** in Betrieb: Preise, Verträge, Hostingort und Freigabe stehen aus. Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
+**Status: Meilensteine M1–M10 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen; dazu Einkaufslisten mit Filialpreisen und Barcode-Scanner, ein freiwilliger, föderierter Preiskatalog mit festen Regionen (Landkreise) und ein eng begrenzter Zugang für den eigenen KI-Agenten; betriebsfertig für Self-Hosting und ein gehostetes Angebot.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) [obsidian/](obsidian/README.md) (Plugin) und [agent/](agent/README.md) (MCP-Brücke). Ein gehostetes Angebot ist technisch vorbereitet, aber **nicht** in Betrieb: Preise, Verträge, Hostingort und Freigabe stehen aus. Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
 
 ## Produktidee
 
@@ -73,7 +73,7 @@ Weitere besprochene Anforderungen sind gezielte private Datei- und Ordnerfreigab
 ## Stand M7 (umgesetzt, Abnahme offen)
 
 - **Preiskatalog:** freiwillig, öffentlich und föderiert über teilnehmende Server, getrennt vom verschlüsselten Sync. „Lesen“ und „Veröffentlichen“ sind getrennte Schalter, beide aus.
-- **Veröffentlichen:** je Preis, nach einer Vorschau. Öffentlich werden Artikel, Packung, Kette, Filiale, Region, Preis und Tag, unter einem Pseudonym. Nie Position, Listen, Einkäufe oder Name.
+- **Veröffentlichen:** je Preis, nach einer Vorschau. Öffentlich werden Artikel (seit M10 mit optionaler EAN), Packung, Kette, Filiale, Region, Preis und Tag, unter einem Pseudonym. Nie Position, Listen, Einkäufe oder Name.
 - **Bestätigung:** Ein neuer Preis gilt erst als bestätigt, wenn eine zweite Person ihn bestätigt, ausdrücklich oder mit demselben Preis. Bestätigte Preise lassen sich als eigene übernehmen; unbestätigte zählen nie in Schätzungen.
 - **Zurückziehen und Sperren:** Zurückziehen wirkt über alle Instanzen, auch das Löschen des Kontos zieht alles zurück. Betreiber können Konten und Instanzen sperren.
 - **Grenze:** Bei offener Föderation kann eine Instanz Identitäten erfinden; eine Bestätigung ist ein Hinweis, kein Beweis. Details: [protokoll/KATALOG.md](protokoll/KATALOG.md).
@@ -101,6 +101,15 @@ Weitere besprochene Anforderungen sind gezielte private Datei- und Ordnerfreigab
   - Umzug zu Self-Host und Löschen des Hosted-Kontos ohne Datenverlust und ohne Dubletten; Offline-Weiterarbeit.
 - **Nicht freigegeben:** produktiver Betrieb, Preise und Zahlung. Das entscheidet Kay gesondert.
 - **Server 1.5.0:** DB-Schema 6. App 0.9.0.
+
+## Stand M10 (umgesetzt, Abnahme auf Geräten offen)
+
+- **Barcode-Scanner:** Posten lassen sich per Barcode (EAN/UPC) anlegen; ein schon bekannter Barcode füllt Name und Variante vor. Erkannt wird auf dem Gerät (Android: mitgeliefertes Modell, Browser: eingebaute Erkennung, sonst Nummer eintippen); es wird nichts gesendet.
+- **Preise je Produkt:** Mit Barcode zählen in der Schätzung zuerst Preise genau dieses Produkts, auch wenn es anders benannt wurde. Im Katalog bestätigen sich Preise mit gleicher EAN gegenseitig.
+- **Feste Regionen:** Region ist ein Landkreis oder eine kreisfreie Stadt mit amtlichem Kreisschlüssel. Die Auswahl sucht nach Name, Kfz-Kennzeichen, PLZ und Ort und schlägt den Kreis aus der gespeicherten Position vor. „NWM“, „Nordwestmecklenburg“ und „Nord-West Mecklenburg“ sind damit dieselbe Region. Alte, frei eingetippte Regionen werden markiert und mit Vorschlag zugeordnet.
+- **Feste Ketten:** Ketten kommen aus einer Liste; andere Läden lassen sich privat führen, aber nicht veröffentlichen.
+- **Katalog:** Veröffentlicht wird nur mit Region und Kette aus der Liste. Ältere Beiträge anderer Instanzen mit eindeutigem Text (z. B. „GVM“) zählen zur passenden Region. Daten, Quellen und Lizenzen: [protokoll/REGIONEN.md](protokoll/REGIONEN.md).
+- **Server 1.6.0:** DB-Schema unverändert (6). App-Schema 8, App 0.10.0, Plugin 0.2.3.
 
 ## Mock-ups
 

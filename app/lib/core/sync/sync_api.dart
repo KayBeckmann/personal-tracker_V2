@@ -299,8 +299,8 @@ class SyncApi {
 
   Future<Map<String, dynamic>> katalogBeitrag(Map<String, dynamic> beitrag) => _anfrage('POST', '/v1/katalog/beitraege', body: beitrag);
 
-  Future<List<Map<String, dynamic>>> katalogPreise({String? artikel, String? kette, String? region}) async =>
-      ((await _anfrage('GET', '/v1/katalog/preise', query: {'artikel': ?artikel, 'kette': ?kette, 'region': ?region}))['preise'] as List)
+  Future<List<Map<String, dynamic>>> katalogPreise({String? artikel, String? ean, String? kette, String? region}) async =>
+      ((await _anfrage('GET', '/v1/katalog/preise', query: {'artikel': ?artikel, 'ean': ?ean, 'kette': ?kette, 'region': ?region}))['preise'] as List)
           .cast<Map<String, dynamic>>();
 
   Future<List<Map<String, dynamic>>> katalogMeine() async => ((await _anfrage('GET', '/v1/katalog/meine'))['beitraege'] as List).cast<Map<String, dynamic>>();

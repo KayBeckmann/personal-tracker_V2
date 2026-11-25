@@ -4,15 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/dienste/standort.dart';
 import '../../core/einkauf/schaetzung.dart';
 import '../../core/katalog/katalog_dienst.dart';
+import '../../core/modell/bestand.dart';
 import '../../core/modell/datum.dart';
 import '../../core/modell/einkauf.dart';
 import '../../core/raeume/raum.dart';
+import '../../core/regionen/regionen.dart';
 import '../../core/sitzung.dart';
 import '../../core/sync/sync_api.dart';
 import '../../core/sync/sync_dienst.dart';
 import '../bausteine.dart';
 import '../format.dart';
 import '../raeume/raum_auswahl.dart';
+import 'region_auswahl.dart';
+import 'scanner.dart';
 import '../thema.dart';
 
 String mengeText(double m, Einheit e) {
@@ -104,7 +108,7 @@ class EinkaufSeite extends ConsumerWidget {
                         vorne: Icon(x.hatPosition ? Icons.place_outlined : Icons.storefront_outlined, size: 20, color: f.gedaempft),
                         titel: x.anzeige,
                         unter: [
-                          if (x.region != null) 'Region ${x.region}',
+                          if (x.region != null) x.regionSchluessel == null ? 'Region „${x.region}“ zuordnen' : 'Region ${x.region}',
                           '${b.preise.values.where((p) => p.filialeId == x.id).length} Preise',
                           if (x.hatPosition) 'Position gespeichert',
                         ].join(' · '),
@@ -177,11 +181,25 @@ class ListeSeite extends ConsumerWidget {
       ),
       floatingActionButton: gesperrt
           ? null
-          : FloatingActionButton.extended(
-              key: const Key('posten-neu'),
-              onPressed: () => postenBearbeiten(context, ref, l, null),
-              icon: const Icon(Icons.add),
-              label: const Text('Posten'),
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton(
+                  key: const Key('posten-scannen-neu'),
+                  heroTag: 'posten-scannen',
+                  tooltip: 'Posten per Barcode',
+                  onPressed: () => postenScannen(context, ref, l),
+                  child: const Icon(Icons.qr_code_scanner),
+                ),
+                const SizedBox(width: 12),
+                FloatingActionButton.extended(
+                  key: const Key('posten-neu'),
+                  heroTag: 'posten-neu',
+                  onPressed: () => postenBearbeiten(context, ref, l, null),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Posten'),
+                ),
+              ],
             ),
       body: SafeArea(
         child: ListView(
@@ -362,12 +380,36 @@ class _ListeFormularState extends ConsumerState<_ListeFormular> {
   }
 }
 
-Future<void> postenBearbeiten(BuildContext context, WidgetRef ref, Einkaufsliste l, Posten? p) => _dialog(context, _PostenFormular(liste: l, posten: p));
+Future<void> postenBearbeiten(BuildContext context, WidgetRef ref, Einkaufsliste l, Posten? p, {String? ean}) =>
+    _dialog(context, _PostenFormular(liste: l, posten: p, ean: ean));
+
+/// Barcode scannen und daraus einen Posten anlegen; ein schon bekannter
+/// Barcode füllt Name und Variante vor.
+Future<void> postenScannen(BuildContext context, WidgetRef ref, Einkaufsliste l) async {
+  final ean = await barcodeScannen(context);
+  if (ean != null && context.mounted) await postenBearbeiten(context, ref, l, null, ean: ean);
+}
+
+/// Zuletzt verwendeter Name und Variante zu einem Barcode (aus eigenen
+/// Posten und Preisen).
+({String name, String? variante})? artikelZuEan(Bestand b, String ean) {
+  ({String name, String? variante, DateTime zeit})? best;
+  for (final p in b.posten.values) {
+    if (p.ean == ean && (best == null || p.geaendert.isAfter(best.zeit))) best = (name: p.name, variante: p.variante, zeit: p.geaendert);
+  }
+  for (final p in b.preise.values) {
+    if (p.ean == ean && (best == null || p.geaendert.isAfter(best.zeit))) best = (name: p.artikel, variante: p.variante, zeit: p.geaendert);
+  }
+  return best == null ? null : (name: best.name, variante: best.variante);
+}
 
 class _PostenFormular extends ConsumerStatefulWidget {
-  const _PostenFormular({required this.liste, this.posten});
+  const _PostenFormular({required this.liste, this.posten, this.ean});
   final Einkaufsliste liste;
   final Posten? posten;
+
+  /// Vorbelegter Barcode (aus dem Scanner).
+  final String? ean;
   @override
   ConsumerState<_PostenFormular> createState() => _PostenFormularState();
 }
@@ -375,16 +417,41 @@ class _PostenFormular extends ConsumerStatefulWidget {
 class _PostenFormularState extends ConsumerState<_PostenFormular> {
   late final _name = TextEditingController(text: widget.posten?.name);
   late final _variante = TextEditingController(text: widget.posten?.variante);
+  late final _ean = TextEditingController(text: widget.ean ?? widget.posten?.ean);
   late final _menge = TextEditingController(text: widget.posten == null ? '1' : mengeText(widget.posten!.menge, Einheit.stueck).split(' ').first);
   late Einheit _einheit = widget.posten?.einheit ?? Einheit.stueck;
   String? _fehler;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.ean != null) _bekannterArtikel(widget.ean!);
+  }
+
+  @override
   void dispose() {
     _name.dispose();
     _variante.dispose();
+    _ean.dispose();
     _menge.dispose();
     super.dispose();
+  }
+
+  /// Leere Felder aus einem schon bekannten Barcode füllen.
+  void _bekannterArtikel(String ean) {
+    final a = artikelZuEan(ref.read(bestandProvider), ean);
+    if (a == null) return;
+    if (_name.text.trim().isEmpty) _name.text = a.name;
+    if (_variante.text.trim().isEmpty && a.variante != null) _variante.text = a.variante!;
+  }
+
+  Future<void> _scannen() async {
+    final ean = await barcodeScannen(context);
+    if (ean == null || !mounted) return;
+    setState(() {
+      _ean.text = ean;
+      _bekannterArtikel(ean);
+    });
   }
 
   Posten? _bauen() {
@@ -393,10 +460,15 @@ class _PostenFormularState extends ConsumerState<_PostenFormular> {
       setState(() => _fehler = 'Bitte Name und eine Menge über 0 angeben.');
       return null;
     }
+    final ean = _ean.text.replaceAll(RegExp(r'\s'), '');
+    if (ean.isNotEmpty && !gtinGueltig(ean)) {
+      setState(() => _fehler = 'Der Barcode ist ungültig (8, 12 oder 13 Ziffern mit passender Prüfziffer).');
+      return null;
+    }
     final s = ref.read(sitzungProvider.notifier);
     final v = _variante.text.trim();
     return (widget.posten ?? Posten(id: s.neueId(), listeId: widget.liste.id, name: '', geaendert: DateTime.now().toUtc()))
-        .kopie(name: _name.text.trim(), variante: () => v.isEmpty ? null : v, menge: menge, einheit: _einheit);
+        .kopie(name: _name.text.trim(), variante: () => v.isEmpty ? null : v, ean: () => ean.isEmpty ? null : ean, menge: menge, einheit: _einheit);
   }
 
   Future<void> _speichern() async {
@@ -430,6 +502,17 @@ class _PostenFormularState extends ConsumerState<_PostenFormular> {
           TextField(key: const Key('posten-name'), controller: _name, autofocus: p == null, decoration: const InputDecoration(labelText: 'Was?')),
           const SizedBox(height: 12),
           TextField(key: const Key('posten-variante'), controller: _variante, decoration: const InputDecoration(labelText: 'Variante (optional, z. B. Bio, laktosefrei)')),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('posten-ean'),
+            controller: _ean,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Barcode (optional)',
+              helperText: 'Ordnet Preise genau diesem Produkt zu.',
+              suffixIcon: IconButton(key: const Key('posten-scannen'), tooltip: 'Barcode scannen', onPressed: _scannen, icon: const Icon(Icons.qr_code_scanner)),
+            ),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -513,6 +596,7 @@ class _PreisFormularState extends ConsumerState<_PreisFormular> {
       id: ref.read(sitzungProvider.notifier).neueId(),
       artikel: widget.posten.name,
       variante: widget.posten.variante,
+      ean: widget.posten.ean,
       filialeId: _filiale!,
       packungsPreisCent: cent,
       packungsMenge: menge,
@@ -542,7 +626,7 @@ class _PreisFormularState extends ConsumerState<_PreisFormular> {
         context,
         titel: 'Öffentlich veröffentlichen?',
         text: 'Diese Angaben werden für alle Teilnehmenden lesbar, auch auf anderen Servern, unter einem Pseudonym:\n\n'
-            '${p.artikel}${p.variante == null ? '' : ' (${p.variante})'} · ${mengeText(p.packungsMenge, p.packungsEinheit)} · '
+            '${p.artikel}${p.variante == null ? '' : ' (${p.variante})'}${p.ean == null ? '' : ' · EAN ${p.ean}'} · ${mengeText(p.packungsMenge, p.packungsEinheit)} · '
             '${f.kette}, ${f.name}, ${beitrag['region']} · ${euro(p.packungsPreisCent)} · ${datumKurz(p.datum)}\n\n'
             'Nicht veröffentlicht werden Position, Listen, Einkäufe und dein Name. Zurückziehen geht jederzeit.',
         ja: 'Veröffentlichen',
@@ -574,6 +658,7 @@ class _PreisFormularState extends ConsumerState<_PreisFormular> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text('Preis für ${widget.posten.name}', style: Theme.of(context).textTheme.headlineSmall),
+          if (widget.posten.ean != null) Text('Barcode ${widget.posten.ean}', key: const Key('preis-ean'), style: const TextStyle(fontSize: 12)),
           const SizedBox(height: 18),
           DropdownButtonFormField<String?>(
             key: const Key('preis-filiale'),
@@ -666,17 +751,33 @@ class _FilialeFormular extends ConsumerStatefulWidget {
 class _FilialeFormularState extends ConsumerState<_FilialeFormular> {
   late final _kette = TextEditingController(text: widget.filiale?.kette);
   late final _name = TextEditingController(text: widget.filiale?.name);
-  late final _region = TextEditingController(text: widget.filiale?.region);
   late double? _breite = widget.filiale?.breite;
   late double? _laenge = widget.filiale?.laenge;
   bool _sucht = false;
+
+  /// Gewählte Region aus der Liste (Schlüssel und Name).
+  late String? _regionSchluessel = widget.filiale?.regionSchluessel;
+  late String? _regionName = widget.filiale?.regionSchluessel == null ? null : widget.filiale?.region;
+
+  /// Ältere, frei eingetippte Region ohne Schlüssel (bleibt, bis gewählt).
+  late String? _regionAlt = widget.filiale?.regionSchluessel == null ? widget.filiale?.region : null;
 
   @override
   void dispose() {
     _kette.dispose();
     _name.dispose();
-    _region.dispose();
     super.dispose();
+  }
+
+  void _regionSetzen(Kreis k) => setState(() {
+        _regionSchluessel = k.schluessel;
+        _regionName = k.name;
+        _regionAlt = null;
+      });
+
+  Future<void> _regionSuchen(Regionen r) async {
+    final k = await regionWaehlen(context, r, start: _regionAlt ?? '');
+    if (k != null) _regionSetzen(k);
   }
 
   Future<void> _position() async {
@@ -699,11 +800,73 @@ class _FilialeFormularState extends ConsumerState<_FilialeFormular> {
   Future<void> _speichern() async {
     if (_kette.text.trim().isEmpty || _name.text.trim().isEmpty) return;
     final s = ref.read(sitzungProvider.notifier);
-    final r = _region.text.trim();
-    final f = (widget.filiale ?? Filiale(id: s.neueId(), kette: '', name: '', geaendert: DateTime.now().toUtc()))
-        .kopie(kette: _kette.text.trim(), name: _name.text.trim(), region: () => r.isEmpty ? null : r, breite: () => _breite, laenge: () => _laenge);
+    final kette = _kette.text.trim();
+    // Kette aus der Liste nur, wenn der Text eindeutig dazu passt.
+    final ketteSchluessel = ref.read(regionenProvider).value?.ketteZu(kette);
+    final f = (widget.filiale ?? Filiale(id: s.neueId(), kette: '', name: '', geaendert: DateTime.now().toUtc())).kopie(
+      kette: kette,
+      ketteSchluessel: () => ketteSchluessel,
+      name: _name.text.trim(),
+      region: () => _regionName ?? _regionAlt,
+      regionSchluessel: () => _regionSchluessel,
+      breite: () => _breite,
+      laenge: () => _laenge,
+    );
     await s.speichereFiliale(f);
     if (mounted) Navigator.pop(context);
+  }
+
+  /// Region: gewählter Kreis, ältere freie Eingabe mit Vorschlag, oder leer.
+  Widget _regionFeld() {
+    final r = ref.watch(regionenProvider).value;
+    final vorschlag = r == null
+        ? null
+        : _regionAlt != null
+            ? r.kreise[r.kreisZu(_regionAlt) ?? '']
+            : _regionSchluessel == null && _breite != null
+                ? r.kreisBei(_breite!, _laenge!)
+                : null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InputDecorator(
+          decoration: InputDecoration(
+            labelText: 'Region (optional)',
+            helperText: 'Landkreis oder kreisfreie Stadt. Preise anderer Filialen derselben Region dienen als Schätzung.',
+            helperMaxLines: 2,
+            suffixIcon: _regionSchluessel == null && _regionAlt == null
+                ? null
+                : IconButton(
+                    tooltip: 'Region entfernen',
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => setState(() => _regionSchluessel = _regionName = _regionAlt = null),
+                  ),
+          ),
+          child: InkWell(
+            key: const Key('filiale-region'),
+            onTap: r == null ? null : () => _regionSuchen(r),
+            child: Text(
+              _regionSchluessel != null
+                  ? (r?.kreise[_regionSchluessel]?.beschreibung ?? _regionName ?? '')
+                  : _regionAlt != null
+                      ? '„$_regionAlt“ – bitte aus der Liste wählen'
+                      : 'Wählen …',
+              style: _regionAlt != null ? TextStyle(color: Theme.of(context).colorScheme.error) : null,
+            ),
+          ),
+        ),
+        if (vorschlag != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('filiale-region-vorschlag'),
+              onPressed: () => _regionSetzen(vorschlag),
+              icon: const Icon(Icons.auto_fix_high_outlined, size: 18),
+              label: Text('Vorschlag: ${vorschlag.name} (${vorschlag.art})'),
+            ),
+          ),
+      ],
+    );
   }
 
   Future<void> _loeschen() async {
@@ -721,11 +884,11 @@ class _FilialeFormularState extends ConsumerState<_FilialeFormular> {
           children: [
             Text(widget.filiale == null ? 'Neue Filiale' : 'Filiale bearbeiten', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 18),
-            TextField(key: const Key('filiale-kette'), controller: _kette, autofocus: widget.filiale == null, decoration: const InputDecoration(labelText: 'Kette, z. B. Aldi Süd')),
+            KettenFeld(controller: _kette, autofocus: widget.filiale == null, onGewaehlt: (k) => _kette.text = k.name),
             const SizedBox(height: 12),
             TextField(key: const Key('filiale-name'), controller: _name, decoration: const InputDecoration(labelText: 'Filiale, z. B. Hauptstraße')),
             const SizedBox(height: 12),
-            TextField(key: const Key('filiale-region'), controller: _region, decoration: const InputDecoration(labelText: 'Region (optional)', helperText: 'Preise anderer Filialen derselben Region dienen als Schätzung.')),
+            _regionFeld(),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -933,7 +1096,7 @@ class KatalogKarte extends ConsumerWidget {
         children: [
           const Text(
             'Freiwillig und getrennt von deinem verschlüsselten Sync: Teilnehmende Server teilen Preise. Ein neuer Preis gilt erst als bestätigt, '
-            'wenn eine zweite Person ihn bestätigt. Was du veröffentlichst, ist öffentlich lesbar (Artikel, Packung, Kette, Filiale, Region, Preis, Tag) – '
+            'wenn eine zweite Person ihn bestätigt. Was du veröffentlichst, ist öffentlich lesbar (Artikel mit Barcode, Packung, Kette, Filiale, Region, Preis, Tag) – '
             'nie Position, Listen, Einkäufe oder dein Name.',
             style: TextStyle(fontSize: 13),
           ),
@@ -968,7 +1131,7 @@ Future<void> katalogZeigen(BuildContext context, WidgetRef ref, Einkaufsliste l,
   final filiale = b.filialen[l.filialeId];
   List<KatalogPreis> treffer;
   try {
-    treffer = await ref.read(katalogProvider).suchen(p.name, filiale: filiale?.region == null ? null : filiale);
+    treffer = await ref.read(katalogProvider).suchen(p.name, ean: p.ean, filiale: filiale?.region == null ? null : filiale);
   } on KatalogFehler catch (e) {
     if (context.mounted) meldung(context, e.meldung, fehler: true);
     return;
@@ -1020,7 +1183,7 @@ Future<void> katalogZeigen(BuildContext context, WidgetRef ref, Einkaufsliste l,
                                 key: Key('katalog-bestaetigen-${k.id}'),
                                 onPressed: () async {
                                   await ref.read(katalogProvider).bestaetigen(k);
-                                  final neu = await ref.read(katalogProvider).suchen(p.name, filiale: filiale?.region == null ? null : filiale);
+                                  final neu = await ref.read(katalogProvider).suchen(p.name, ean: p.ean, filiale: filiale?.region == null ? null : filiale);
                                   setState(() => treffer = neu);
                                 },
                                 child: const Text('Habe ich auch so gesehen'),

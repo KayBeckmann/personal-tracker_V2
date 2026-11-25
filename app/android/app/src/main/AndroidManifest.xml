@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Terminerinnerungen: anzeigen, exakt planen, nach Neustart wiederherstellen. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
@@ -11,6 +12,8 @@
     <!-- Nur auf Knopfdruck: Filiale merken bzw. nächste Filiale finden (Einkauf). -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <!-- Barcode-Scanner (M10): Kamera nur, solange die Scanner-Seite offen ist.
+         Die Berechtigung bringt mobile_scanner selbst mit. -->
     <!-- allowBackup aus: der Schlüssel im Keystore lässt sich nicht mitsichern;
          Sicherungen laufen bewusst über die verschlüsselte Backup-Datei. -->
     <application
@@ -20,6 +23,16 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- ML Kit (Barcode-Scanner) meldet sonst Nutzungsstatistiken über
+             Googles datatransport-Backend. Ohne registriertes Backend werden
+             diese Ereignisse verworfen; das Erkennen selbst läuft auf dem Gerät. -->
+        <service
+            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+            tools:node="merge">
+            <meta-data
+                android:name="backend:com.google.android.datatransport.cct.CctBackendFactory"
+                tools:node="remove" />
+        </service>
         <activity
             android:name=".MainActivity"
             android:exported="true"

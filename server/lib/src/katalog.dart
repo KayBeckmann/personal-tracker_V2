@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:sqlite3/sqlite3.dart';
 
+import 'regionen.dart';
 import 'speicher.dart';
 
 /// Föderierter, freiwilliger Produkt- und Preiskatalog (M7).
@@ -104,6 +105,11 @@ class Katalog {
     if (typ == 'preis') {
       final artikel = text('artikel', 100), kette = text('kette', 60), filiale = text('filiale', 100), region = text('region', 60);
       final variante = text('variante', 60, pflicht: false);
+      // M10: optionale Schlüssel. Wer sie mitschickt, muss gültige schicken.
+      final ean = j['ean'], rs = j['regionSchluessel'], ks = j['ketteSchluessel'];
+      if (ean != null && (ean is! String || !gtinGueltig(ean))) return null;
+      if (rs != null && !Regionen.de.kreise.containsKey(rs)) return null;
+      if (ks != null && !Regionen.de.ketten.containsKey(ks)) return null;
       final menge = j['packungsMenge'], einheit = j['packungsEinheit'], cent = j['preisCent'], tag = j['tag'];
       if (artikel == null || kette == null || filiale == null || region == null) return null;
       if (j['variante'] != null && variante == null) return null;
@@ -118,6 +124,9 @@ class Katalog {
         'typ': 'preis',
         'artikel': artikel,
         'variante': ?variante,
+        'ean': ?(ean as String?),
+        'regionSchluessel': ?(rs as String?),
+        'ketteSchluessel': ?(ks as String?),
         'packungsMenge': menge,
         'packungsEinheit': einheit,
         'kette': kette,
@@ -144,6 +153,7 @@ class Katalog {
         if (k.gesperrt) throw KatalogFehler(403, 'Dieses Konto ist für den Katalog gesperrt.');
         final daten = pruefen(j);
         if (daten == null) throw KatalogFehler(400, 'Ungültiger Beitrag.');
+        if (daten['typ'] == 'preis') _festeNamen(daten);
         final heute = db.select('SELECT count(*) n FROM katalog WHERE instanz = ? AND autor = ? AND empfangen > ?', [instanz, k.pseudonym, _jetzt - 86400000]);
         if ((heute.first['n'] as int) >= 300) throw KatalogFehler(429, 'Zu viele Beiträge heute.');
         final ziel = daten['ziel'] as Map?;
@@ -158,6 +168,31 @@ class Katalog {
         }
         return _eintragen(k.pseudonym, daten);
       });
+
+  /// M10: Eigene Preise nur mit bekannter Region (Kreis) und Kette. Fehlt ein
+  /// Schlüssel (ältere App), wird er aus dem Text abgeleitet, wenn das
+  /// eindeutig ist. Angezeigt werden danach immer die festen Namen.
+  static void _festeNamen(Map<String, Object?> daten) {
+    final r = Regionen.de;
+    final rs = daten['regionSchluessel'] as String? ?? r.kreisZu(daten['region'] as String?);
+    if (rs == null) {
+      throw KatalogFehler(400, 'Unbekannte Region „${daten['region']}“: bitte einen Landkreis oder eine kreisfreie Stadt aus der Liste wählen.');
+    }
+    final ks = daten['ketteSchluessel'] as String? ?? r.ketteZu(daten['kette'] as String?);
+    if (ks == null) {
+      throw KatalogFehler(400, 'Unbekannte Kette „${daten['kette']}“: bitte eine Kette aus der Liste wählen. Andere Läden bleiben privat.');
+    }
+    daten
+      ..['regionSchluessel'] = rs
+      ..['region'] = r.kreise[rs]!.name
+      ..['ketteSchluessel'] = ks
+      ..['kette'] = r.ketten[ks]!.name;
+  }
+
+  /// Region und Kette als Schlüssel, auch für ältere Beiträge mit freiem
+  /// Text (dann abgeleitet, wenn eindeutig, sonst der normalisierte Text).
+  static String _regionVon(Map d) => d['regionSchluessel'] as String? ?? Regionen.de.kreisZu(d['region'] as String?) ?? 'text:${_norm(d['region'])}';
+  static String _ketteVon(Map d) => d['ketteSchluessel'] as String? ?? Regionen.de.ketteZu(d['kette'] as String?) ?? 'text:${_norm(d['kette'])}';
 
   Map<String, Object?> _eintragen(String autor, Map<String, Object?> daten) {
     final seq = (int.tryParse(s.meta('katalog_seq') ?? '0') ?? 0) + 1;
@@ -279,18 +314,19 @@ class Katalog {
   static String _norm(Object? s) => '${s ?? ''}'.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
   static String _schluessel(Map d) => [
-        _norm(d['artikel']),
-        _norm(d['variante']),
+        if (d['ean'] != null) 'ean:${d['ean']}' else ...[_norm(d['artikel']), _norm(d['variante'])],
         '${d['packungsMenge']}',
         d['packungsEinheit'],
-        _norm(d['kette']),
+        _ketteVon(d),
         _norm(d['filiale']),
-        _norm(d['region']),
+        _regionVon(d),
       ].join('|');
 
   /// Preise passend zur Suche, mit Bestätigungen. Zurückgezogene Beiträge,
   /// gesperrte Konten und gesperrte Instanzen fehlen.
-  List<Map<String, Object?>> suchen({required String konto, String? artikel, String? kette, String? region, int max = 200}) {
+  /// [kette] und [region] als Schlüssel oder Text; [ean] und [artikel]
+  /// gelten zusammen als „oder“.
+  List<Map<String, Object?>> suchen({required String konto, String? artikel, String? ean, String? kette, String? region, int max = 200}) {
     final ich = '${this.konto(konto).pseudonym}@$instanz';
     final gesperrtInstanz = {for (final r in db.select('SELECT url FROM katalog_peers WHERE gesperrt = 1')) r['url'] as String};
     final gesperrtKonto = {for (final r in db.select('SELECT pseudonym FROM katalog_konten WHERE gesperrt = 1')) '${r['pseudonym']}@$instanz'};
@@ -311,13 +347,21 @@ class Katalog {
     for (final p in preise) {
       (nachSchluessel[_schluessel(p.d)] ??= []).add(p);
     }
-    final a = _norm(artikel), k = _norm(kette), r = _norm(region);
+    final a = _norm(artikel), e = ean?.trim() ?? '';
+    String? schluessel(String? x, Map<String, Object?> feste, String? Function(String?) zu) {
+      final t = x?.trim() ?? '';
+      if (t.isEmpty) return null;
+      return feste.containsKey(t) ? t : zu(t) ?? 'text:${_norm(t)}';
+    }
+
+    final k = schluessel(kette, Regionen.de.ketten, Regionen.de.ketteZu), r = schluessel(region, Regionen.de.kreise, Regionen.de.kreisZu);
     final heute = DateTime.now().toUtc();
     final ergebnis = <Map<String, Object?>>[];
     for (final p in preise) {
-      if (a.isNotEmpty && !_norm(p.d['artikel']).contains(a)) continue;
-      if (k.isNotEmpty && _norm(p.d['kette']) != k) continue;
-      if (r.isNotEmpty && _norm(p.d['region']) != r) continue;
+      final perEan = e.isNotEmpty && p.d['ean'] == e, perName = a.isNotEmpty && _norm(p.d['artikel']).contains(a);
+      if ((e.isNotEmpty || a.isNotEmpty) && !perEan && !perName) continue;
+      if (k != null && _ketteVon(p.d) != k) continue;
+      if (r != null && _regionVon(p.d) != r) continue;
       final stimmen = {...?bestaetigungen['${p.instanz}|${p.d['id']}']};
       // Gleicher Preis für dieselbe Packung und Filiale innerhalb von 14 Tagen zählt mit.
       final tag = DateTime.parse(p.d['tag'] as String);
@@ -327,6 +371,8 @@ class Katalog {
       stimmen.remove(p.autor);
       ergebnis.add({
         ...p.d.cast<String, Object?>(),
+        'regionSchluessel': ?_regionVon(p.d).alsSchluessel,
+        'ketteSchluessel': ?_ketteVon(p.d).alsSchluessel,
         'instanz': p.instanz,
         'autor': p.autor,
         'eigen': p.autor == ich,
@@ -359,4 +405,9 @@ class KatalogFehler implements Exception {
   final String meldung;
   @override
   String toString() => meldung;
+}
+
+extension on String {
+  /// Fester Schlüssel oder `null` für den Ersatz aus freiem Text.
+  String? get alsSchluessel => startsWith('text:') ? null : this;
 }

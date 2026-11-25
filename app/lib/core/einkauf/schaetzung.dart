@@ -21,10 +21,20 @@ enum PreisHerkunft {
 typedef PostenWert = ({Preis? preis, int? kostenCent, PreisHerkunft herkunft});
 
 /// Jüngster Preis für [schluessel], optional nur aus bestimmten Filialen.
-Preis? juengsterPreis(Iterable<Preis> preise, String schluessel, {bool Function(String filialeId)? filiale}) {
+/// Mit [ean] zählen zuerst Preise mit demselben Barcode (genau das
+/// Produkt), erst ohne solche die Preise mit gleichem Namen.
+Preis? juengsterPreis(Iterable<Preis> preise, String schluessel, {String? ean, bool Function(String filialeId)? filiale}) {
+  if (ean != null) {
+    final genau = _juengster(preise, (p) => p.ean == ean, filiale);
+    if (genau != null) return genau;
+  }
+  return _juengster(preise, (p) => p.schluessel == schluessel, filiale);
+}
+
+Preis? _juengster(Iterable<Preis> preise, bool Function(Preis) passt, bool Function(String filialeId)? filiale) {
   Preis? best;
   for (final p in preise) {
-    if (p.schluessel != schluessel || (filiale != null && !filiale(p.filialeId))) continue;
+    if (!passt(p) || (filiale != null && !filiale(p.filialeId))) continue;
     if (best == null || p.datum.isAfter(best.datum) || (p.datum == best.datum && p.geaendert.isAfter(best.geaendert))) best = p;
   }
   return best;
@@ -50,16 +60,16 @@ PostenWert bewerten(Posten p, Iterable<Preis> preise, Map<String, Filiale> filia
   Preis? preis;
   var herkunft = PreisHerkunft.unbekannt;
   if (filialeId == null) {
-    preis = juengsterPreis(preise, p.schluessel);
+    preis = juengsterPreis(preise, p.schluessel, ean: p.ean);
     if (preis != null) herkunft = PreisHerkunft.ohneFiliale;
   } else {
-    preis = juengsterPreis(preise, p.schluessel, filiale: (f) => f == filialeId);
+    preis = juengsterPreis(preise, p.schluessel, ean: p.ean, filiale: (f) => f == filialeId);
     if (preis != null) {
       herkunft = PreisHerkunft.filiale;
     } else {
-      final region = filialen[filialeId]?.region?.trim().toLowerCase();
-      if (region != null && region.isNotEmpty) {
-        preis = juengsterPreis(preise, p.schluessel, filiale: (f) => filialen[f]?.region?.trim().toLowerCase() == region);
+      final region = filialen[filialeId]?.regionVergleich;
+      if (region != null) {
+        preis = juengsterPreis(preise, p.schluessel, ean: p.ean, filiale: (f) => filialen[f]?.regionVergleich == region);
         if (preis != null) herkunft = PreisHerkunft.region;
       }
     }

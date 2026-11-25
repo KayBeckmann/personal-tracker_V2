@@ -38,7 +38,7 @@ class Instanz {
       'packungsEinheit': 'g',
       'kette': 'Aldi Süd',
       'filiale': filiale,
-      'region': 'Musterstadt',
+      'region': 'Nordwestmecklenburg',
       'preisCent': cent,
       'waehrung': 'EUR',
       'tag': tag,
@@ -227,5 +227,79 @@ void main() {
     expect(Katalog.pruefen({...basis(), 'artikel': 'A' * 101}), isNull);
     expect(Katalog.pruefen({...basis(), 'artikel': 'Zeile\nUmbruch'}), isNull);
     expect(Katalog.pruefen({...basis(), 'breite': 52.5})!.containsKey('breite'), isFalse, reason: 'unbekannte Felder (z. B. Position) werden nicht übernommen');
+  });
+
+  test('M10: eigene Preise nur mit fester Region und Kette; Namen werden vereinheitlicht', () async {
+    final kay = await a.konto();
+    Future<(int, Map<String, dynamic>)> senden(Map<String, Object?> extra) => a.anfrage('POST', '/v1/katalog/beitraege', token: kay, body: {
+          'typ': 'preis', 'artikel': 'Butter', 'packungsMenge': 250, 'packungsEinheit': 'g', 'kette': 'Aldi Süd', 'filiale': 'Hauptstraße',
+          'region': 'Nordwestmecklenburg', 'preisCent': 229, 'waehrung': 'EUR', 'tag': heute(), ...extra,
+        });
+    // Ältere App ohne Schlüssel: eindeutiger Text wird zugeordnet.
+    final (st1, j1) = await senden({'region': 'NWM', 'kette': 'ALDI SÜD'});
+    expect(st1, 201, reason: '$j1');
+    expect([j1['region'], j1['regionSchluessel'], j1['kette'], j1['ketteSchluessel']], ['Nordwestmecklenburg', '13074', 'Aldi Süd', 'aldi-sued']);
+    // Mit Schlüsseln aus der Liste: der Schlüssel gilt, der Name kommt aus der Liste.
+    final (st2, j2) = await senden({'region': 'irgendwas', 'regionSchluessel': '13074', 'ketteSchluessel': 'lidl', 'kette': 'x'});
+    expect(st2, 201);
+    expect([j2['region'], j2['kette']], ['Nordwestmecklenburg', 'Lidl']);
+    // Unbekannt oder mehrdeutig: abgelehnt mit Hinweis.
+    final (st3, j3) = await senden({'region': 'München'});
+    expect(st3, 400);
+    expect(j3['meldung'], contains('Region'));
+    expect((await senden({'kette': 'Tante Emma'})).$1, 400);
+    expect((await senden({'regionSchluessel': '99999'})).$1, 400);
+    expect((await senden({'ean': '4006381333932'})).$1, 400, reason: 'falsche Prüfziffer');
+  });
+
+  test('M10: Suche nach EAN, Regions- und Kettenschlüssel; Bestätigung über die EAN', () async {
+    final kay = await a.konto(), lena = await a.konto();
+    Future<Map<String, dynamic>> preis(String token, String artikel, {String? ean, String region = 'NWM'}) async {
+      final (st, j) = await a.anfrage('POST', '/v1/katalog/beitraege', token: token, body: {
+        'typ': 'preis', 'artikel': artikel, 'ean': ?ean, 'packungsMenge': 250, 'packungsEinheit': 'g', 'kette': 'Lidl', 'filiale': 'Hafen',
+        'region': region, 'preisCent': 199, 'waehrung': 'EUR', 'tag': heute(),
+      });
+      expect(st, 201, reason: '$j');
+      return j;
+    }
+
+    await preis(kay, 'Markenbutter', ean: '4006381333931');
+    await preis(lena, 'Butter mild', ean: '4006381333931');
+    await preis(kay, 'Butter', region: 'Rostock');
+    Future<List<Map<String, dynamic>>> suche(String query) async =>
+        ((await a.anfrage('GET', '/v1/katalog/preise?$query', token: kay)).$2['preise'] as List).cast<Map<String, dynamic>>();
+    final perEan = await suche('ean=4006381333931');
+    expect(perEan.map((x) => x['artikel']).toSet(), {'Markenbutter', 'Butter mild'});
+    // Gleiche EAN, Packung, Filiale und Preis von zwei Personen: gegenseitig bestätigt, trotz anderer Namen.
+    expect(perEan.every((x) => x['bestaetigt'] == true), isTrue);
+    expect((await suche('artikel=butter&region=13074')).length, 2);
+    expect((await suche('artikel=butter&region=Nord-West%20Mecklenburg')).length, 2);
+    expect((await suche('artikel=butter&region=HRO')).single['regionSchluessel'], '13003');
+    expect((await suche('artikel=butter&kette=lidl')).length, 3);
+  });
+
+  test('M10: ältere Beiträge anderer Instanzen mit freiem Text werden zugeordnet, wenn eindeutig', () async {
+    b.katalog.peerHinzufuegen(a.url);
+    final tim = await b.konto();
+    final feed = {
+      'eintraege': [
+        {'seq': 1, 'id': 'alt-0000001', 'autor': 'p-aaaaaaaaaaaa', 'typ': 'preis', 'artikel': 'Quark', 'packungsMenge': 500, 'packungsEinheit': 'g',
+         'kette': 'aldi sued', 'filiale': 'Markt', 'region': 'GVM', 'preisCent': 129, 'waehrung': 'EUR', 'tag': heute()},
+        {'seq': 2, 'id': 'alt-0000002', 'autor': 'p-aaaaaaaaaaaa', 'typ': 'preis', 'artikel': 'Quark', 'packungsMenge': 500, 'packungsEinheit': 'g',
+         'kette': 'Dorfladen', 'filiale': 'Markt', 'region': 'Musterstadt', 'preisCent': 139, 'waehrung': 'EUR', 'tag': heute()},
+      ],
+      'bis': 2,
+      'peers': [],
+    };
+    manipuliert['${a.url}/k1/feed?seit=0&max=500'] = jsonEncode(feed);
+    expect((await b.katalog.abgleichen(abruf)).ungueltig, 0, reason: 'alte Beiträge bleiben gültig');
+    final x = await b.anfrage('GET', '/v1/katalog/preise?artikel=quark&region=13074', token: tim);
+    final treffer = (x.$2['preise'] as List).cast<Map<String, dynamic>>();
+    expect(treffer.single['regionSchluessel'], '13074');
+    expect(treffer.single['ketteSchluessel'], 'aldi-sued');
+    final alle = ((await b.anfrage('GET', '/v1/katalog/preise?artikel=quark', token: tim)).$2['preise'] as List).cast<Map<String, dynamic>>();
+    final frei = alle.firstWhere((p) => p['region'] == 'Musterstadt');
+    expect(frei.containsKey('regionSchluessel'), isFalse);
+    expect(frei.containsKey('ketteSchluessel'), isFalse);
   });
 }
