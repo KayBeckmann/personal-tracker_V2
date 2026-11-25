@@ -1,3 +1,4 @@
+import 'agent.dart';
 import 'aufgabe.dart';
 import 'einkauf.dart';
 import 'finanzen.dart';
@@ -22,6 +23,9 @@ class Bestand {
     this.einkaufslisten = const {},
     this.posten = const {},
     this.einkaeufe = const {},
+    this.agenten = const {},
+    this.agentProtokoll = const {},
+    this.agentVorschlaege = const {},
     this.einstellungen = const Einstellungen(),
   });
 
@@ -45,6 +49,11 @@ class Bestand {
   final Map<String, Einkaufsliste> einkaufslisten;
   final Map<String, Posten> posten;
   final Map<String, Einkauf> einkaeufe;
+
+  /// KI-Agenten (M8): Zugänge, Protokoll ihrer Aufrufe, Vorschläge.
+  final Map<String, AgentZugang> agenten;
+  final Map<String, AgentProtokoll> agentProtokoll;
+  final Map<String, AgentVorschlag> agentVorschlaege;
   final Einstellungen einstellungen;
 
   Bestand kopie({
@@ -61,6 +70,9 @@ class Bestand {
     Map<String, Einkaufsliste>? einkaufslisten,
     Map<String, Posten>? posten,
     Map<String, Einkauf>? einkaeufe,
+    Map<String, AgentZugang>? agenten,
+    Map<String, AgentProtokoll>? agentProtokoll,
+    Map<String, AgentVorschlag>? agentVorschlaege,
     Einstellungen? einstellungen,
   }) =>
       Bestand(
@@ -77,6 +89,9 @@ class Bestand {
         einkaufslisten: einkaufslisten ?? this.einkaufslisten,
         posten: posten ?? this.posten,
         einkaeufe: einkaeufe ?? this.einkaeufe,
+        agenten: agenten ?? this.agenten,
+        agentProtokoll: agentProtokoll ?? this.agentProtokoll,
+        agentVorschlaege: agentVorschlaege ?? this.agentVorschlaege,
         einstellungen: einstellungen ?? this.einstellungen,
       );
 

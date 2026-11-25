@@ -12,7 +12,7 @@ import 'speicher.dart';
 /// Version des Sync-Vertrags (Pfadpräfix `/v1`). Innerhalb einer Version
 /// kommen nur Felder hinzu; Clients ignorieren unbekannte Felder.
 const apiVersion = 1;
-const serverVersion = '1.3.0';
+const serverVersion = '1.4.0';
 
 class Konfiguration {
   const Konfiguration({
@@ -140,7 +140,15 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
   Geraet angemeldet(Request r) {
     final h = r.headers['authorization'] ?? '';
     final g = h.startsWith('Bearer ') ? s.geraetZuToken(h.substring(7).trim()) : null;
-    if (g == null) throw _Fehler(401, 'nicht-angemeldet', 'Gerät nicht angemeldet oder entfernt.');
+    if (g == null) throw _Fehler(401, 'nicht-angemeldet', 'Gerät nicht angemeldet, entfernt oder abgelaufen.');
+    return g;
+  }
+
+  /// Verwaltung (Geräte, Recovery, Konto, Teilen, Katalog) nur für echte
+  /// Geräte, nie für eine Agenten-Brücke.
+  Geraet verwaltend(Request r) {
+    final g = angemeldet(r);
+    if (g.art == 'agent') throw _Fehler(403, 'verboten', 'Ein Agenten-Zugang darf das nicht.');
     return g;
   }
 
@@ -264,7 +272,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
       return _json({...s.kontoInfo(g.konto), 'geraet': g.id, 'geraete': s.geraete(g.konto)});
     })
     ..put('/v1/konto/recovery', (Request r) async {
-      final g = angemeldet(r);
+      final g = verwaltend(r);
       final j = await lies(r);
       try {
         s.recoveryErsetzen(
@@ -279,7 +287,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
       return _json({'ok': true});
     })
     ..delete('/v1/konto', (Request r) {
-      final g = angemeldet(r);
+      final g = verwaltend(r);
       // Öffentliche Katalogbeiträge zurückziehen, dann alles löschen.
       s.transaktion(() => katalog.kontoEntfernen(g.konto));
       s.kontoLoeschen(g.konto);
@@ -293,18 +301,25 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
     })
     ..delete('/v1/geraete/<id>', (Request r, String id) {
       final g = angemeldet(r);
+      // Ein Agent darf nur sich selbst abmelden.
+      if (g.art == 'agent' && id != g.id) throw _Fehler(403, 'verboten', 'Ein Agenten-Zugang darf das nicht.');
       if (!s.geraetEntfernen(g.konto, id)) throw _Fehler(404, 'nicht-gefunden', 'Gerät nicht gefunden.');
       return _json({'ok': true});
     })
     ..post('/v1/kopplungen', (Request r) async {
-      final g = angemeldet(r);
+      final g = verwaltend(r);
       final j = await lies(r);
       final slot = feld<String>(j, 'slot', maxLaenge: 64);
       if (!hex64.hasMatch(slot)) throw _Fehler(400, 'ungueltig', 'Ungültiger Kopplungs-Slot.');
       final sek = feld<int>(j, 'gueltigSekunden');
       if (sek < 30 || sek > 900) throw _Fehler(400, 'ungueltig', 'Gültigkeit zwischen 30 und 900 Sekunden.');
+      final art = j['art'] ?? 'geraet';
+      if (art != 'geraet' && art != 'agent') throw _Fehler(400, 'ungueltig', 'Art muss „geraet“ oder „agent“ sein.');
+      final tage = j['geraetAblaufTage'];
+      if (tage != null && (tage is! int || tage < 1 || tage > 3650)) throw _Fehler(400, 'ungueltig', 'Ablauf zwischen 1 und 3650 Tagen.');
       try {
-        s.kopplungAnlegen(g.konto, slot, feld<String>(j, 'paket'), Duration(seconds: sek));
+        s.kopplungAnlegen(g.konto, slot, feld<String>(j, 'paket'), Duration(seconds: sek),
+            art: art as String, geraetAblauf: tage == null ? null : DateTime.now().add(Duration(days: tage as int)));
       } on SpeicherFehler catch (e) {
         throw _Fehler(429, 'zu-viele', e.meldung);
       }
@@ -331,7 +346,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
       return _json({'pseudonym': x.pseudonym, 'instanz': katalog.instanz, 'gesperrt': x.gesperrt, 'foederiert': katalog.foederiert});
     })
     ..post('/v1/katalog/beitraege', (Request r) async {
-      final g = angemeldet(r);
+      final g = verwaltend(r);
       final j = await lies(r);
       try {
         return _json(katalog.beitragen(g.konto, j), status: 201);
@@ -367,7 +382,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
       return _json({'raeume': s.raeume(g.konto)});
     })
     ..post('/v1/raeume', (Request r) async {
-      final g = angemeldet(r);
+      final g = verwaltend(r);
       final id = feld<String>(await lies(r), 'id', maxLaenge: 64);
       if (!hex32.hasMatch(id)) throw _Fehler(400, 'ungueltig', 'Ungültige Raum-ID.');
       try {
@@ -378,7 +393,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
       return _json({'ok': true}, status: 201);
     })
     ..delete('/v1/raeume/<raum>', (Request r, String raum) {
-      final g = angemeldet(r);
+      final g = verwaltend(r);
       final recht = s.recht(g.konto, raum);
       if (recht == null) throw _Fehler(404, 'nicht-gefunden', 'Freigabe nicht gefunden.');
       // Eigentümer löschen den Raum, Mitglieder treten aus.
@@ -390,7 +405,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
       return _json({'ok': true});
     })
     ..post('/v1/raeume/<raum>/einladungen', (Request r, String raum) async {
-      final g = angemeldet(r);
+      final g = verwaltend(r);
       eigentuemer(g, raum);
       final j = await lies(r);
       final slot = feld<String>(j, 'slot', maxLaenge: 64);
@@ -409,7 +424,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
     })
     ..post('/v1/einladungen/<slot>/annehmen', (Request r, String slot) async {
       begrenzen(r);
-      final g = angemeldet(r);
+      final g = verwaltend(r);
       if (!hex64.hasMatch(slot)) throw _Fehler(404, 'nicht-gefunden', 'Einladung unbekannt oder abgelaufen.');
       final antwort = feld<String>(await lies(r), 'antwort', maxLaenge: 4096);
       try {
@@ -421,7 +436,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
       }
     })
     ..put('/v1/raeume/<raum>/mitglieder/<konto>', (Request r, String raum, String konto) async {
-      final g = angemeldet(r);
+      final g = verwaltend(r);
       eigentuemer(g, raum);
       final j = await lies(r);
       final recht = j['recht'];
@@ -434,7 +449,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
       return _json({'ok': true});
     })
     ..delete('/v1/raeume/<raum>/mitglieder/<konto>', (Request r, String raum, String konto) {
-      final g = angemeldet(r);
+      final g = verwaltend(r);
       eigentuemer(g, raum);
       if (!s.mitgliedEntfernen(raum, konto)) throw _Fehler(404, 'nicht-gefunden', 'Mitglied nicht gefunden.');
       return _json({'ok': true});

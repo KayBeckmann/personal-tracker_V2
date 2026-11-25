@@ -16,7 +16,8 @@ import 'package:sqlite3/sqlite3.dart';
 /// - 2: Blöcke für Dateiinhalte des Vault-Syncs (M4)
 /// - 3: geteilte Räume mit Mitgliedern, Einladungen, Objekten und Blöcken (M5)
 /// - 4: föderierter Preiskatalog (M7)
-const dbSchema = 4;
+/// - 5: Geräte-Art (Agent) und Ablauf (M8)
+const dbSchema = 5;
 
 final _zufall = Random.secure();
 
@@ -37,7 +38,9 @@ class SpeicherFehler implements Exception {
   String toString() => meldung;
 }
 
-typedef Geraet = ({String id, String konto});
+/// Ein angemeldetes Gerät. [art] ist `geraet` oder `agent` (Brücke für
+/// einen externen KI-Agenten, ohne Verwaltungsrechte).
+typedef Geraet = ({String id, String konto, String art});
 
 /// Wo Objekte und Blöcke liegen: im Konto selbst oder in einem Raum.
 class Ort {
@@ -223,6 +226,12 @@ class Speicher {
         entdeckt INTEGER NOT NULL
       );
     '''),
+    4: (db) => db.execute('''
+      ALTER TABLE geraete ADD COLUMN art TEXT NOT NULL DEFAULT 'geraet';
+      ALTER TABLE geraete ADD COLUMN ablauf INTEGER;
+      ALTER TABLE kopplungen ADD COLUMN art TEXT NOT NULL DEFAULT 'geraet';
+      ALTER TABLE kopplungen ADD COLUMN geraet_ablauf INTEGER;
+    '''),
   };
 
   int get _jetzt => DateTime.now().toUtc().millisecondsSinceEpoch;
@@ -268,12 +277,12 @@ class Speicher {
         return (konto: konto, geraet: geraet, token: token);
       });
 
-  ({String geraet, String token}) _geraetAnlegen(String konto, String name) {
+  ({String geraet, String token}) _geraetAnlegen(String konto, String name, {String art = 'geraet', int? ablauf}) {
     final token = zufall(32);
     final id = neueId();
     db.execute(
-      'INSERT INTO geraete (id, konto, token_hash, name, erstellt, zuletzt) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, konto, geheimHash(token), name, _jetzt, _jetzt],
+      'INSERT INTO geraete (id, konto, token_hash, name, erstellt, zuletzt, art, ablauf) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, konto, geheimHash(token), name, _jetzt, _jetzt, art, ablauf],
     );
     return (geraet: id, token: base64Url.encode(token));
   }
@@ -296,13 +305,16 @@ class Speicher {
     } on FormatException {
       return null;
     }
-    final r = db.select('SELECT id, konto, zuletzt FROM geraete WHERE token_hash = ?', [geheimHash(roh)]).firstOrNull;
+    final r = db.select('SELECT id, konto, zuletzt, art, ablauf FROM geraete WHERE token_hash = ?', [geheimHash(roh)]).firstOrNull;
     if (r == null) return null;
+    // Abgelaufene Zugänge (z. B. befristeter Agent) gelten nicht mehr.
+    final ablauf = r['ablauf'] as int?;
+    if (ablauf != null && ablauf < _jetzt) return null;
     // Grob (einmal pro Minute) vermerken, wann das Gerät zuletzt da war.
     if (_jetzt - (r['zuletzt'] as int) > 60000) {
       db.execute('UPDATE geraete SET zuletzt = ? WHERE id = ?', [_jetzt, r['id']]);
     }
-    return (id: r['id'] as String, konto: r['konto'] as String);
+    return (id: r['id'] as String, konto: r['konto'] as String, art: r['art'] as String);
   }
 
   Map<String, Object?> kontoInfo(String konto) {
@@ -322,8 +334,15 @@ class Speicher {
   }
 
   List<Map<String, Object?>> geraete(String konto) => [
-        for (final r in db.select('SELECT id, name, erstellt, zuletzt FROM geraete WHERE konto = ? ORDER BY erstellt', [konto]))
-          {'id': r['id'], 'name': r['name'], 'erstellt': _iso(r['erstellt'] as int), 'zuletzt': _iso(r['zuletzt'] as int)},
+        for (final r in db.select('SELECT id, name, erstellt, zuletzt, art, ablauf FROM geraete WHERE konto = ? ORDER BY erstellt', [konto]))
+          {
+            'id': r['id'],
+            'name': r['name'],
+            'erstellt': _iso(r['erstellt'] as int),
+            'zuletzt': _iso(r['zuletzt'] as int),
+            'art': r['art'],
+            if (r['ablauf'] != null) 'ablauf': _iso(r['ablauf'] as int),
+          },
       ];
 
   bool geraetEntfernen(String konto, String id) {
@@ -353,21 +372,26 @@ class Speicher {
 
   static const kopplungenProKonto = 5;
 
-  void kopplungAnlegen(String konto, String slot, String paket, Duration gueltig) => transaktion(() {
+  /// [art] `agent`: das neue Gerät ist eine Agenten-Brücke, optional bis
+  /// [geraetAblauf] gültig.
+  void kopplungAnlegen(String konto, String slot, String paket, Duration gueltig, {String art = 'geraet', DateTime? geraetAblauf}) => transaktion(() {
         _kopplungenAufraeumen();
         final n = db.select('SELECT count(*) n FROM kopplungen WHERE konto = ?', [konto]).first['n'] as int;
         if (n >= kopplungenProKonto) throw SpeicherFehler('Zu viele offene Kopplungen. Bitte etwas warten.');
-        db.execute('INSERT OR REPLACE INTO kopplungen VALUES (?, ?, ?, ?)', [slot, konto, paket, _jetzt + gueltig.inMilliseconds]);
+        db.execute(
+          'INSERT OR REPLACE INTO kopplungen (slot, konto, paket, ablauf, art, geraet_ablauf) VALUES (?, ?, ?, ?, ?, ?)',
+          [slot, konto, paket, _jetzt + gueltig.inMilliseconds, art, geraetAblauf?.toUtc().millisecondsSinceEpoch],
+        );
       });
 
   /// Löst eine Kopplung genau einmal ein und registriert das neue Gerät.
   ({String konto, String paket, String geraet, String token})? kopplungEinloesen(String slot, String geraetName) => transaktion(() {
         _kopplungenAufraeumen();
-        final k = db.select('SELECT konto, paket FROM kopplungen WHERE slot = ?', [slot]).firstOrNull;
+        final k = db.select('SELECT konto, paket, art, geraet_ablauf FROM kopplungen WHERE slot = ?', [slot]).firstOrNull;
         if (k == null) return null;
         db.execute('DELETE FROM kopplungen WHERE slot = ?', [slot]);
         final konto = k['konto'] as String;
-        final (:geraet, :token) = _geraetAnlegen(konto, geraetName);
+        final (:geraet, :token) = _geraetAnlegen(konto, geraetName, art: k['art'] as String, ablauf: k['geraet_ablauf'] as int?);
         return (konto: konto, paket: k['paket'] as String, geraet: geraet, token: token);
       });
 

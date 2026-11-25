@@ -26,7 +26,7 @@ Dies ist die Schnittstelle zwischen den Apps (Android, Web, später Obsidian) un
 
 ### `GET /v1/info`
 
-Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.3.0", "instanz": "<hex>"}`. Die Apps prüfen damit vor dem Verbinden, ob unter der Adresse ein passender Server läuft.
+Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.4.0", "instanz": "<hex>"}`. Die Apps prüfen damit vor dem Verbinden, ob unter der Adresse ein passender Server läuft.
 
 ### `POST /v1/konten` – Konto anlegen
 
@@ -57,7 +57,7 @@ Liefert:
   "konto": "<hex>", "seq": 42, "objekte": 17, "bloecke": 3, "belegt": 123456,
   "recoveryHuelle": "…", "schluesselPaket": "…", "erstellt": "…",
   "geraet": "<eigene id>",
-  "geraete": [{"id": "…", "name": "<Geheimtext>", "erstellt": "…", "zuletzt": "…"}]
+  "geraete": [{"id": "…", "name": "<Geheimtext>", "erstellt": "…", "zuletzt": "…", "art": "geraet|agent", "ablauf"?: "…"}]
 }
 ```
 
@@ -76,7 +76,10 @@ Löscht das Konto mit allen Objekten, Geräten und Kopplungen.
 
 ### `POST /v1/kopplungen` – Kopplung anbieten
 
-Body: `{"slot": "<64 hex>", "paket": "<Geheimtext>", "gueltigSekunden": 30…900}`.
+Body: `{"slot": "<64 hex>", "paket": "<Geheimtext>", "gueltigSekunden": 30…900, "art"?: "geraet"|"agent", "geraetAblaufTage"?: 1…3650}`.
+
+- **`art: "agent"`** (seit 1.4.0): Das neue Gerät ist eine Agenten-Brücke (M8). Sie darf Objekte und Blöcke lesen und schreiben, aber nichts verwalten. Kopplungen, Recovery, Konto löschen, andere Geräte, Räume, Einladungen und Katalogbeiträge ergeben `403`; nur sich selbst abmelden darf sie.
+- **`geraetAblaufTage`:** befristet das neue Gerät. Danach lehnt der Server dessen Token ab (`401`).
 
 Pro Konto sind höchstens 5 Kopplungen gleichzeitig offen.
 
@@ -160,5 +163,5 @@ Der Katalog ist **nicht verschlüsselt** und für andere Instanzen lesbar. Regel
 
 ## Kompatibilität und Migration
 
-- **Datenbank:** Das Schema der Server-Datenbank steht in `PRAGMA user_version` (aktuell 4; 2 ergänzt die Blöcke, 3 die Räume, 4 den Katalog). Migrationen laufen beim Start in einer Transaktion. Eine neuere Datenbank lehnt ein älterer Server ab.
+- **Datenbank:** Das Schema der Server-Datenbank steht in `PRAGMA user_version` (aktuell 5; 2 ergänzt die Blöcke, 3 die Räume, 4 den Katalog, 5 Geräte-Art und -Ablauf). Migrationen laufen beim Start in einer Transaktion. Eine neuere Datenbank lehnt ein älterer Server ab.
 - **Schemaversion der Inhalte:** Sie steht im verschlüsselten Umschlag und ist damit Sache der Apps. Eine App spielt nichts aus einer neueren Schemaversion ein und meldet dann „App aktualisieren“.

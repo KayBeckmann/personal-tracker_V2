@@ -1,6 +1,6 @@
 # Sync: Kryptografie und Bedrohungsmodell
 
-Stand: M7 (App 0.7.0, Obsidian-Plugin 0.2.1, Server 1.3.0). Diese Datei soll eine unabhängige Prüfung möglich machen. Die Verfahren sind etabliert, die Bibliotheken auch (pointycastle in der App, `package:crypto` im Server). Eigene Kryptografie gibt es nicht. Der Code steht in `app/lib/core/sync/`, `app/lib/core/vault/`, `obsidian/src/` und `server/lib/src/`. Die Tests liegen in `app/test/core/` (`sync_test.dart`, `vault_test.dart`, `protokoll_test.dart`), `obsidian/test/` und `server/test/`.
+Stand: M8 (App 0.8.0, Obsidian-Plugin 0.2.2, Agenten-Brücke 0.1.0, Server 1.4.0). Diese Datei soll eine unabhängige Prüfung möglich machen. Die Verfahren sind etabliert, die Bibliotheken auch (pointycastle in der App, `package:crypto` im Server). Eigene Kryptografie gibt es nicht. Der Code steht in `app/lib/core/sync/`, `app/lib/core/vault/`, `obsidian/src/` und `server/lib/src/`. Die Tests liegen in `app/test/core/` (`sync_test.dart`, `vault_test.dart`, `protokoll_test.dart`), `obsidian/test/` und `server/test/`.
 
 ## Schlüssel
 
@@ -102,6 +102,17 @@ Der Katalog ist die einzige Ausnahme von der Ende-zu-Ende-Verschlüsselung: Wer 
 - **Identität:** Der Server zeigt ein Pseudonym je Konto, nie Konto-ID oder Anzeigename. Wer sich dasselbe Pseudonym über längere Zeit ansieht, kann Gewohnheiten erkennen, etwa Filiale, Region und Zeitpunkte.
 - **Herkunft:** Jede Instanz veröffentlicht nur ihre eigenen Beiträge; die Herkunft ergibt sich aus der abgerufenen HTTPS-Adresse. Zurückziehen akzeptieren Instanzen nur von der Herkunftsinstanz.
 - **Missbrauch:** Bei offener Föderation kann eine Instanz beliebig viele Identitäten erfinden und damit Bestätigungen fälschen. Gegenmittel sind Konto- und Instanzsperren. Übernommen wird ein Katalogpreis nur von Hand.
+
+## KI-Agenten (M8)
+
+Ein KI-Agent bekommt Zugriff über die lokale Brücke `pt-agent` ([agent/](../agent/README.md)). Sie ist eine Art eigenes Gerät des Kontos.
+
+- **Kopplung:** wie bei einem Gerät per Einmal-Code. Das Paket trägt zusätzlich Name und Modulrechte. Der Server legt das Gerät als `art = agent` an, auf Wunsch mit Ablaufdatum. Nach dem Ablauf lehnt er das Token ab. Ein Agenten-Code taugt nicht zum Koppeln eines Geräts und umgekehrt; beide Seiten melden ein falsch gekoppeltes Gerät sofort wieder ab.
+- **Server-Rechte:** Ein Agenten-Gerät darf Objekte und Blöcke lesen und schreiben, aber nichts verwalten. Kopplungen, Recovery, Konto löschen, fremde Geräte, Räume, Einladungen und Katalogbeiträge ergeben `403`.
+- **Modulrechte:** Die Brücke setzt sie durch. Sie bietet nur Werkzeuge freigegebener Module an, schreibt nur private Einträge und legt für Löschen und Veröffentlichen nur Vorschläge an, die die Person in der App ausführt. Kryptografisch ist das **keine** Grenze: Die Brücke hält den Kontoschlüssel, weil die Daten eines Kontos unter einem Schlüssel liegen.
+- **Am Rechner:** Die Zugangsdatei (Token, Kontoschlüssel, Raumschlüssel) ist mit einer Passphrase verschlüsselt (scrypt N=2^15, AES-256-GCM). Klartext hält die Brücke nur im Arbeitsspeicher. Wer Datei und Passphrase hat, liest alles, was das Konto lesen darf.
+- **Nachvollziehbarkeit:** Jeder Werkzeugaufruf erzeugt einen Protokolleintrag ohne Inhalte. Er synchronisiert verschlüsselt und ist in der App sichtbar. Eine manipulierte Brücke könnte das Protokoll auslassen; es ist ein Hilfsmittel, kein Beweis.
+- **Widerruf:** Die App meldet das Agenten-Gerät ab. Was der Agent schon gelesen hat, bleibt bei ihm, bei Bedarf auch an den KI-Anbieter übertragen. Bei Verdacht zusätzlich den Recovery-Schlüssel erneuern.
 
 ## Was der Server sieht
 

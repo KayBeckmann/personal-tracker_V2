@@ -5,7 +5,7 @@ import { base64, entschluesseln, hex, hkdf, hmac, sha256, utf8, verschluesseln, 
 
 export const VAULT_BEREICH = 'vault';
 /** Schemaversion der App (Umschlag `s`); muss zu `protokoll/testvektoren.json` passen. */
-export const SCHEMA = 6;
+export const SCHEMA = 7;
 export const INLINE_GRENZE = 64 * 1024;
 export const BLOCK_GROESSE = 1024 * 1024;
 const BLOCK_RASTER = 4096;
@@ -237,11 +237,12 @@ export class Kopplungscode {
     return hex(await hkdf(utf8(this.text), 'ptv2-kopplung-slot-v1'));
   }
 
-  async paketOeffnen(paket: string): Promise<{ konto: string; schluessel: Kontoschluessel } | null> {
+  /** Öffnet das Kopplungspaket; [agent] enthält bei Agenten-Codes Name und Rechte. */
+  async paketOeffnen(paket: string): Promise<{ konto: string; schluessel: Kontoschluessel; agent?: Record<string, unknown> } | null> {
     const k = await hkdf(utf8(this.text), 'ptv2-kopplung-paket-v1');
     const j = await entpacken(k, paket, `ptv2-kopplung|${await this.slot()}`);
     if (typeof j?.konto !== 'string' || typeof j?.k !== 'string') return null;
-    return { konto: j.konto, schluessel: Kontoschluessel.ausBase64(j.k) };
+    return { konto: j.konto, schluessel: Kontoschluessel.ausBase64(j.k), agent: typeof j.agent === 'object' && j.agent ? (j.agent as Record<string, unknown>) : undefined };
   }
 }
 

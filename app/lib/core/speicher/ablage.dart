@@ -15,7 +15,7 @@ class Ablage {
   final Database db;
 
   static const dateiname = 'personal_tracker_v2.db';
-  static const bereiche = ['termine', 'aufgaben', 'notizen', 'konten', 'buchungen', 'plaene', 'konflikte', 'raeume', 'filialen', 'preise', 'einkaufslisten', 'posten', 'einkaeufe', 'einstellungen'];
+  static const bereiche = ['termine', 'aufgaben', 'notizen', 'konten', 'buchungen', 'plaene', 'konflikte', 'raeume', 'filialen', 'preise', 'einkaufslisten', 'posten', 'einkaeufe', 'agenten', 'agent_protokoll', 'agent_vorschlaege', 'einstellungen'];
 
   /// Zustand des Syncs (Verbindung, Revisionen, ausstehende Änderungen);
   /// ebenfalls verschlüsselt, aber nicht Teil von Sicherungen.

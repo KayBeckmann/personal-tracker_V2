@@ -8,7 +8,8 @@
 /// - 4: M4 (Vault-Dateien im Sync; Einstellung zur Dateigrenze)
 /// - 5: M5 (geteilte Räume; Termine und Aufgaben mit optionalem Raum)
 /// - 6: M6 (Einkaufslisten, Posten, Filialen, Preise, Einkäufe)
-const aktuellesSchema = 6;
+/// - 7: M8 (KI-Agenten: Zugänge, Protokoll, Vorschläge)
+const aktuellesSchema = 7;
 
 /// Rohdaten: Bereich → Datensätze (Klartext-JSON).
 typedef Rohdaten = Map<String, List<Map<String, dynamic>>>;
@@ -16,7 +17,7 @@ typedef Rohdaten = Map<String, List<Map<String, dynamic>>>;
 /// Migration von Version `n` auf `n + 1`.
 typedef Migration = Rohdaten Function(Rohdaten daten);
 
-const Map<int, Migration> migrationen = {1: _v1zuV2, 2: _v2zuV3, 3: _v3zuV4, 4: _v4zuV5, 5: _v5zuV6};
+const Map<int, Migration> migrationen = {1: _v1zuV2, 2: _v2zuV3, 3: _v3zuV4, 4: _v4zuV5, 5: _v5zuV6, 6: _v6zuV7};
 
 /// Schema 2 ergänzt nur den Bereich „aufgaben“; vorhandene Datensätze
 /// bleiben unverändert. Die Versionsnummer steigt trotzdem, damit eine
@@ -40,6 +41,12 @@ Rohdaten _v4zuV5(Rohdaten d) => {...d, 'raeume': d['raeume'] ?? []};
 Rohdaten _v5zuV6(Rohdaten d) => {
       ...d,
       for (final b in ['filialen', 'preise', 'einkaufslisten', 'posten', 'einkaeufe']) b: d[b] ?? [],
+    };
+
+/// Schema 7 ergänzt die Bereiche der KI-Agenten.
+Rohdaten _v6zuV7(Rohdaten d) => {
+      ...d,
+      for (final b in ['agenten', 'agent_protokoll', 'agent_vorschlaege']) b: d[b] ?? [],
     };
 
 class SchemaFehler implements Exception {

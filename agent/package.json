@@ -1,0 +1,25 @@
+{
+  "name": "personal-tracker-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lokale MCP-Brücke: gibt einem externen KI-Agenten Zugriff auf freigegebene Bereiche des Personal Trackers (Ende-zu-Ende-verschlüsselt, Schlüssel bleiben auf diesem Rechner)",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "pt-agent": "dist/pt-agent.mjs"
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "check": "tsc -p .",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.10",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  }
+}

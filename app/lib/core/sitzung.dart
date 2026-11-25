@@ -10,6 +10,7 @@ import 'dienste/erinnerungen.dart';
 import 'krypto/kdf.dart';
 import 'krypto/recovery_schluessel.dart';
 import 'krypto/schluesselbund.dart';
+import 'modell/agent.dart';
 import 'modell/aufgabe.dart';
 import 'modell/einkauf.dart';
 import 'modell/bestand.dart';
@@ -438,6 +439,36 @@ class SitzungNotifier extends Notifier<Sitzung> {
   Future<void> geplantBuchen(Buchung b, {DateTime? datum}) => speichereBuchung(
         b.kopie(status: BuchungsStatus.gebucht, ausPlanung: !b.istUmbuchung, datum: datum),
       );
+
+  // ---------------------------------------------------------------------
+  // KI-Agenten (M8)
+
+  Future<void> speichereAgent(AgentZugang a) => _schreiben('agenten', a.id, a.toJson(), (b) => b.kopie(agenten: {...b.agenten, a.id: a}));
+
+  /// Entfernt den Agenten mit seinem Protokoll und seinen Vorschlägen.
+  Future<void> loescheAgent(String id) async {
+    final p = [for (final x in _b.agentProtokoll.values) if (x.agent == id) x.id];
+    final v = [for (final x in _b.agentVorschlaege.values) if (x.agent == id) x.id];
+    await _aendern(
+      [('agenten', id, null), for (final x in p) ('agent_protokoll', x, null), for (final x in v) ('agent_vorschlaege', x, null)],
+      (b) => b.kopie(
+        agenten: {...b.agenten}..remove(id),
+        agentProtokoll: {...b.agentProtokoll}..removeWhere((k, _) => p.contains(k)),
+        agentVorschlaege: {...b.agentVorschlaege}..removeWhere((k, _) => v.contains(k)),
+      ),
+    );
+  }
+
+  Future<void> speichereVorschlag(AgentVorschlag v) =>
+      _schreiben('agent_vorschlaege', v.id, v.toJson(), (b) => b.kopie(agentVorschlaege: {...b.agentVorschlaege, v.id: v}));
+
+  /// Hält das Agenten-Protokoll klein: nur die jüngsten [behalten] Einträge.
+  Future<void> agentProtokollKuerzen({int behalten = 500}) async {
+    final alle = _b.agentProtokoll.values.toList()..sort((a, c) => c.zeit.compareTo(a.zeit));
+    if (alle.length <= behalten) return;
+    final weg = [for (final x in alle.skip(behalten)) x.id];
+    await _loeschen('agent_protokoll', weg, (b) => b.kopie(agentProtokoll: {...b.agentProtokoll}..removeWhere((k, _) => weg.contains(k))));
+  }
 
   /// Raumdaten (Schlüssel, Mitglieder, Ordner) speichern.
   Future<void> raumSpeichern(Raum r) => _schreiben('raeume', r.id, r.toJson(), (b) => b.kopie(raeume: {...b.raeume, r.id: r}));

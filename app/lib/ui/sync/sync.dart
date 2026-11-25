@@ -603,8 +603,8 @@ class _GeraeteDialogState extends ConsumerState<_GeraeteDialog> {
                 ListTile(
                   key: Key('geraet-${g.id}'),
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(g.dieses ? Icons.smartphone : Icons.devices_other),
-                  title: Text(g.dieses ? '${g.name} (dieses Gerät)' : g.name),
+                  leading: Icon(g.dieses ? Icons.smartphone : (g.agent ? Icons.smart_toy_outlined : Icons.devices_other)),
+                  title: Text(g.dieses ? '${g.name} (dieses Gerät)' : (g.agent ? '${g.name} (KI-Agent)' : g.name)),
                   subtitle: Text('seit ${datumKurz(g.erstellt.toLocal())} · zuletzt ${vorWieLanger(g.zuletzt.toLocal(), jetzt)}'),
                   trailing: g.dieses
                       ? null
