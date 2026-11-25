@@ -1,6 +1,6 @@
 # Sync: Kryptografie und Bedrohungsmodell
 
-Stand: M5 (App 0.5.0, Obsidian-Plugin 0.2.0, Server 1.2.0). Diese Datei soll eine unabhängige Prüfung möglich machen. Die Verfahren sind etabliert, die Bibliotheken auch (pointycastle in der App, `package:crypto` im Server). Eigene Kryptografie gibt es nicht. Der Code steht in `app/lib/core/sync/`, `app/lib/core/vault/`, `obsidian/src/` und `server/lib/src/`. Die Tests liegen in `app/test/core/` (`sync_test.dart`, `vault_test.dart`, `protokoll_test.dart`), `obsidian/test/` und `server/test/`.
+Stand: M7 (App 0.7.0, Obsidian-Plugin 0.2.1, Server 1.3.0). Diese Datei soll eine unabhängige Prüfung möglich machen. Die Verfahren sind etabliert, die Bibliotheken auch (pointycastle in der App, `package:crypto` im Server). Eigene Kryptografie gibt es nicht. Der Code steht in `app/lib/core/sync/`, `app/lib/core/vault/`, `obsidian/src/` und `server/lib/src/`. Die Tests liegen in `app/test/core/` (`sync_test.dart`, `vault_test.dart`, `protokoll_test.dart`), `obsidian/test/` und `server/test/`.
 
 ## Schlüssel
 
@@ -93,6 +93,15 @@ Ausführlich in [protokoll/RAEUME.md](../protokoll/RAEUME.md). Kurz:
   - Ein Mitglied mit Leserecht könnte zusammen mit dem Server Inhalte unterschieben.
   - Der Server sieht, welche Konten in welchem Raum sind und mit welchem Recht.
   - Einen Eigentümerwechsel gibt es nicht. Eine Freigabe lässt sich nur beenden und neu anlegen.
+
+## Öffentlicher Preiskatalog (M7)
+
+Der Katalog ist die einzige Ausnahme von der Ende-zu-Ende-Verschlüsselung: Wer etwas beiträgt, veröffentlicht es bewusst. Was das genau umfasst, steht in [protokoll/KATALOG.md](../protokoll/KATALOG.md).
+
+- **Getrennt vom Sync:** Lesen und Beitragen sind in der App getrennt einschaltbar und standardmäßig aus. Veröffentlicht wird nur je Preis nach einer Vorschau. Position, Listen, Einkäufe und Namen verlassen das Gerät nie Richtung Katalog.
+- **Identität:** Der Server zeigt ein Pseudonym je Konto, nie Konto-ID oder Anzeigename. Wer sich dasselbe Pseudonym über längere Zeit ansieht, kann Gewohnheiten erkennen, etwa Filiale, Region und Zeitpunkte.
+- **Herkunft:** Jede Instanz veröffentlicht nur ihre eigenen Beiträge; die Herkunft ergibt sich aus der abgerufenen HTTPS-Adresse. Zurückziehen akzeptieren Instanzen nur von der Herkunftsinstanz.
+- **Missbrauch:** Bei offener Föderation kann eine Instanz beliebig viele Identitäten erfinden und damit Bestätigungen fälschen. Gegenmittel sind Konto- und Instanzsperren. Übernommen wird ein Katalogpreis nur von Hand.
 
 ## Was der Server sieht
 

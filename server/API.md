@@ -26,7 +26,7 @@ Dies ist die Schnittstelle zwischen den Apps (Android, Web, später Obsidian) un
 
 ### `GET /v1/info`
 
-Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.2.0", "instanz": "<hex>"}`. Die Apps prüfen damit vor dem Verbinden, ob unter der Adresse ein passender Server läuft.
+Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.3.0", "instanz": "<hex>"}`. Die Apps prüfen damit vor dem Verbinden, ob unter der Adresse ein passender Server läuft.
 
 ### `POST /v1/konten` – Konto anlegen
 
@@ -141,7 +141,24 @@ Ein Raum ist ein eigener Objektbereich: ein geteilter Vault-Ordner, Kalender ode
   - Konten ohne Zugang bekommen `404`, als gäbe es den Raum nicht.
 - **Speicherplatz:** Was im Raum liegt, zählt beim Eigentümer.
 
+### Preiskatalog (seit Server 1.3.0, öffentlich)
+
+Der Katalog ist **nicht verschlüsselt** und für andere Instanzen lesbar. Regeln: [protokoll/KATALOG.md](../protokoll/KATALOG.md).
+
+- **Für eigene Konten (angemeldet):**
+  - `GET /v1/katalog/ich`: liefert `{"pseudonym", "instanz", "gesperrt", "foederiert"}`.
+  - `POST /v1/katalog/beitraege`: Body `{"typ": "preis", "artikel", "variante"?, "packungsMenge", "packungsEinheit": "stueck|g|kg|ml|l", "kette", "filiale", "region", "preisCent", "waehrung": "EUR", "tag": "JJJJ-MM-TT"}`, oder `{"typ": "bestaetigung"|"rueckzug", "ziel": {"instanz", "id"}}`.
+    - `403`: eigenen Preis bestätigen, fremden zurückziehen oder gesperrtes Konto.
+    - `404`: Ziel unbekannt.
+    - `429`: mehr als 300 Beiträge am Tag.
+  - `GET /v1/katalog/preise?artikel=&kette=&region=`: Preise mit `bestaetigungen`, `bestaetigt`, `eigen`, `vonMir`, `veraltet`.
+  - `GET /v1/katalog/meine`: eigene, nicht zurückgezogene Beiträge.
+- **Für andere Instanzen (ohne Anmeldung):**
+  - `GET /k1/info`: liefert `{"dienst": "personal-tracker-katalog", "api": 1, "instanz": "<url>"}`.
+  - `GET /k1/feed?seit=&max=`: liefert `{"eintraege": [...], "bis", "mehr", "peers": [...]}`.
+  - Ohne öffentliche Adresse antworten beide mit `404`.
+
 ## Kompatibilität und Migration
 
-- **Datenbank:** Das Schema der Server-Datenbank steht in `PRAGMA user_version` (aktuell 3; 2 ergänzt die Blöcke, 3 die Räume). Migrationen laufen beim Start in einer Transaktion. Eine neuere Datenbank lehnt ein älterer Server ab.
+- **Datenbank:** Das Schema der Server-Datenbank steht in `PRAGMA user_version` (aktuell 4; 2 ergänzt die Blöcke, 3 die Räume, 4 den Katalog). Migrationen laufen beim Start in einer Transaktion. Eine neuere Datenbank lehnt ein älterer Server ab.
 - **Schemaversion der Inhalte:** Sie steht im verschlüsselten Umschlag und ist damit Sache der Apps. Eine App spielt nichts aus einer neueren Schemaversion ein und meldet dann „App aktualisieren“.

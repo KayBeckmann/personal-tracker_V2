@@ -218,7 +218,11 @@ class Zeile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final f = context.farben;
-    return InkWell(
+    // Ausdrücklich als Knopf, auch wenn vorne ein eigener Knopf steht
+    // (z. B. Abhaken) – sonst erkennen Screenreader die Zeile nicht.
+    return Semantics(
+      button: onTap != null,
+      child: InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
@@ -250,6 +254,7 @@ class Zeile extends StatelessWidget {
             ],
           ],
         ),
+      ),
       ),
     );
   }

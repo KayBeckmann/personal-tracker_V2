@@ -53,6 +53,7 @@ flutter build apk --release --split-per-abi   # braucht android/key.properties
 | Vault | `lib/core/vault/`: Dateien des Obsidian-Vaults aus dem Sync (Vertrag: [protokoll/VAULT.md](../protokoll/VAULT.md)); große Dateien in verschlüsselten Blöcken, erst beim Öffnen geladen und dann zwischengespeichert; Secret-Muster aus `protokoll/secret-muster.json` (Kopie in `secret_muster.g.dart`, ein Test prüft die Gleichheit) |
 | Freigaben | `lib/core/raeume/`: Räume mit Raum- und ID-Schlüssel, Einladung per Einmal-Code (Paarschlüssel aus dem Code), Widerruf mit Schlüsselwechsel; der Motor gleicht jeden Raum wie ein eigenes Konto ab und zieht Einträge beim Wechsel privat ↔ geteilt um. Protokoll: [protokoll/RAEUME.md](../protokoll/RAEUME.md) |
 | Einkauf | `lib/core/einkauf/schaetzung.dart`: Preis je Filiale, sonst Region (Schätzung), sonst unbekannt (nicht 0 €); Umrechnung g↔kg, ml↔l, Stück. Standort nur auf Knopfdruck (`core/dienste/standort.dart`, Android: ACCESS_COARSE/FINE_LOCATION). |
+| Katalog | `lib/core/katalog/`: öffentlicher, föderierter Preiskatalog (nicht E2EE). Lesen und Beitragen getrennt, aus; Veröffentlichen je Preis mit Vorschau; Übernehmen nur bestätigter Preise. Regeln: [protokoll/KATALOG.md](../protokoll/KATALOG.md) |
 | Sync | `lib/core/sync/`: Kontoschlüssel (256 Bit) verschlüsselt jeden Datensatz vor dem Upload; Objekt-IDs sind HMACs; Kopplung per Einmal-Code, Recovery über den Recovery-Schlüssel. Details: [server/SICHERHEIT.md](../server/SICHERHEIT.md) |
 
 Unverschlüsselt liegen nur Schlüsselbund, Schemaversion und Farbschema. Der

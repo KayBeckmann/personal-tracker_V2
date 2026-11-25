@@ -1,6 +1,6 @@
 # Personal Tracker V2
 
-**Status: Meilensteine M1–M6 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen; dazu Einkaufslisten mit Filialpreisen.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) und [obsidian/](obsidian/README.md) (Plugin). Globaler Preiskatalog, Agenten-Zugang und ein gehostetes Angebot gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
+**Status: Meilensteine M1–M7 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen; dazu Einkaufslisten mit Filialpreisen und ein freiwilliger, föderierter Preiskatalog.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) und [obsidian/](obsidian/README.md) (Plugin). Agenten-Zugang und ein gehostetes Angebot gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
 
 ## Produktidee
 
@@ -67,6 +67,14 @@ Weitere besprochene Anforderungen sind gezielte private Datei- und Ordnerfreigab
 - **Preise:** je Filiale mit Packungspreis, Packungsgröße, Datum und Herkunft. Die App rechnet den Grundpreis (€/kg, €/l, €/Stück).
 - **Schätzung:** Die Listensumme nutzt den jüngsten Preis der gewählten Filiale, ersatzweise derselben Region (als Schätzung markiert). Ein unbekannter Preis bleibt unbekannt und zählt nicht als 0 €.
 - **Einkauf abschließen:** Die abgehakten Posten ergeben einen Vorschlag; mit dem bezahlten Betrag und dem Konto entsteht genau eine Buchung im eigenen Haushaltsbuch. Gekaufte Posten verschwinden von der Liste; nichts wird doppelt gebucht. Am globalen Preiskatalog nimmt nichts automatisch teil.
+
+## Stand M7 (umgesetzt, Abnahme offen)
+
+- **Preiskatalog:** freiwillig, öffentlich und föderiert über teilnehmende Server, getrennt vom verschlüsselten Sync. „Lesen“ und „Veröffentlichen“ sind getrennte Schalter, beide aus.
+- **Veröffentlichen:** je Preis, nach einer Vorschau. Öffentlich werden Artikel, Packung, Kette, Filiale, Region, Preis und Tag, unter einem Pseudonym. Nie Position, Listen, Einkäufe oder Name.
+- **Bestätigung:** Ein neuer Preis gilt erst als bestätigt, wenn eine zweite Person ihn bestätigt, ausdrücklich oder mit demselben Preis. Bestätigte Preise lassen sich als eigene übernehmen; unbestätigte zählen nie in Schätzungen.
+- **Zurückziehen und Sperren:** Zurückziehen wirkt über alle Instanzen, auch das Löschen des Kontos zieht alles zurück. Betreiber können Konten und Instanzen sperren.
+- **Grenze:** Bei offener Föderation kann eine Instanz Identitäten erfinden; eine Bestätigung ist ein Hinweis, kein Beweis. Details: [protokoll/KATALOG.md](protokoll/KATALOG.md).
 
 ## Mock-ups
 

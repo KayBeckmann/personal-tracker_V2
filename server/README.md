@@ -46,6 +46,9 @@ Davor einen Reverse-Proxy mit TLS setzen. Läuft er auf derselben Maschine, zus�
 | `PT_HOST` / `PT_PORT` | `127.0.0.1` / `8743` | Adresse |
 | `PT_URSPRUNG` | `*` | erlaubter Ursprung der Web-App (CORS) |
 | `PT_HINTER_PROXY` | – | `1`: Client-IP für die Versuchsbegrenzung aus `X-Forwarded-For` |
+| `PT_OEFFENTLICHE_URL` | – | eigene `https://…`-Adresse; nur dann nimmt die Instanz am föderierten Preiskatalog teil |
+| `PT_KATALOG_PEERS` | – | Startliste anderer Katalog-Instanzen, durch Komma getrennt |
+| `PT_KATALOG_MINUTEN` | `10` | Abstand des Abrufs anderer Instanzen |
 | `PT_MAX_KONTO_MB` | – (unbegrenzt) | Speicherplatz je Konto in MiB (Objekte und Dateiblöcke des Vault-Syncs) |
 
 ## Sicherung und Wiederherstellung (Server)
@@ -64,6 +67,20 @@ docker compose start sync
 ```
 
 Nach dem Zurückspielen einer **älteren** Sicherung merken die Apps beim nächsten Abgleich, dass der Server weniger kennt. Sie laden dann ihren Stand erneut hoch. Was seitdem nur auf dem Server lag, ist verloren. Das betrifft Änderungen eines Geräts, das inzwischen auch weg ist.
+
+## Preiskatalog (optional, öffentlich)
+
+Der föderierte Preiskatalog ist das Einzige auf dem Server, das **nicht** verschlüsselt ist. Er bleibt aus, bis `PT_OEFFENTLICHE_URL` gesetzt ist. Die Konten entscheiden selbst, ob sie lesen oder beitragen. Regeln und Grenzen: [protokoll/KATALOG.md](../protokoll/KATALOG.md).
+
+Moderation als Betreiber:
+
+```bash
+docker compose exec sync pt-sync katalog sperren p-0123456789ab        # Konto sperren, Beiträge zurückziehen
+docker compose exec sync pt-sync katalog instanz-sperren https://spam.example
+docker compose exec sync pt-sync katalog abgleichen                    # andere Instanzen sofort abrufen
+```
+
+Mit offener Föderation kann jede Instanz teilnehmen und beliebig viele Pseudonyme erfinden. Bestätigungen sind deshalb ein Hinweis, kein Beweis.
 
 ## Update und Migration
 
