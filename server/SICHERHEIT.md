@@ -1,6 +1,6 @@
 # Sync: Kryptografie und Bedrohungsmodell
 
-Stand: M4 (App 0.4.0, Obsidian-Plugin 0.1.0, Server 1.1.0). Diese Datei soll eine unabhängige Prüfung möglich machen. Die Verfahren sind etabliert, die Bibliotheken auch (pointycastle in der App, `package:crypto` im Server). Eigene Kryptografie gibt es nicht. Der Code steht in `app/lib/core/sync/`, `app/lib/core/vault/`, `obsidian/src/` und `server/lib/src/`. Die Tests liegen in `app/test/core/` (`sync_test.dart`, `vault_test.dart`, `protokoll_test.dart`), `obsidian/test/` und `server/test/`.
+Stand: M5 (App 0.5.0, Obsidian-Plugin 0.2.0, Server 1.2.0). Diese Datei soll eine unabhängige Prüfung möglich machen. Die Verfahren sind etabliert, die Bibliotheken auch (pointycastle in der App, `package:crypto` im Server). Eigene Kryptografie gibt es nicht. Der Code steht in `app/lib/core/sync/`, `app/lib/core/vault/`, `obsidian/src/` und `server/lib/src/`. Die Tests liegen in `app/test/core/` (`sync_test.dart`, `vault_test.dart`, `protokoll_test.dart`), `obsidian/test/` und `server/test/`.
 
 ## Schlüssel
 
@@ -74,13 +74,34 @@ Der Vertrag steht in [protokoll/VAULT.md](../protokoll/VAULT.md); App (Dart) und
 - **Schlüssel im Plugin:** Token und Kontoschlüssel liegen in der Schlüsselablage von Obsidian (`app.secretStorage`), nicht im Vault-Ordner. Andere Sync-Programme (Syncthing usw.) bekommen sie also nicht mit.
 - **Aufräumen:** Clients nennen dem Server alle noch benutzten Blöcke. Ein bösartiger Client des eigenen Kontos könnte so Blöcke löschen lassen. Jüngere Blöcke als 24 Stunden bleiben immer, und vor jedem Senden lädt ein Client fehlende Blöcke erneut hoch.
 
+## Freigaben an andere Personen (M5)
+
+Ausführlich in [protokoll/RAEUME.md](../protokoll/RAEUME.md). Kurz:
+
+- **Räume:** Geteilt wird in Räumen (Vault-Ordner, Kalender, Aufgabenliste), jeder mit eigenem Raumschlüssel und ID-Schlüssel. Ein Raum gehört einem Konto; Mitglieder haben `lesen` oder `schreiben`. Alles Übrige bleibt im eigenen Konto unter dem Kontoschlüssel.
+- **Identitätsprüfung:** Wer eingeladen wird, bekommt einen Einmal-Code (100 Bit, 7 Tage) außerhalb des Servers.
+  - Aus dem Code folgen Slot, Paketschlüssel und ein Paarschlüssel zwischen Eigentümer und Person.
+  - Der Server kann ohne Code weder das Paket lesen noch einen eigenen Schlüssel unterschieben.
+  - Die Antwort der Person (ihr Name) ist mit dem Paarschlüssel verschlüsselt, der Eigentümer erkennt sie daran.
+- **Schlüsselverteilung:** Raumschlüssel gehen nur verpackt mit dem Paarschlüssel des jeweiligen Mitglieds an den Server (`paket`). Der Server hält keine Schlüssel, die er öffnen kann.
+- **Rechte:** Der Server prüft jeden Abruf und jede Änderung. Fremde Räume beantwortet er mit `404`, Schreiben mit Leserecht mit `403`. Die Apps bieten Bearbeiten mit Leserecht gar nicht an; das Plugin legt solche Änderungen als private Kopie beiseite.
+- **Widerruf:** Der Server liefert sofort nichts mehr, und ein neuer Raumschlüssel (nächste Epoche) gilt für alles Weitere. Bereits Geladenes bleibt beim entfernten Mitglied; das lässt sich nicht rückwirkend ändern.
+- **Zurückholen privater Einträge:** Ein Mitglied mit Schreibrecht könnte die ID eines Eintrags kennen, der früher geteilt war und jetzt wieder privat ist. Die Clients übernehmen aus einem Raum deshalb nichts, was lokal noch an einem anderen Ort liegt. Eigene Verschiebungen löschen zuerst am alten Ort und kommen danach an.
+- **Secrets:** Wird eine Datei in einen geteilten Ordner verschoben, wird sie erneut geprüft. Eine Freigabe für das eigene Konto gilt nicht automatisch für einen Raum.
+- **Grenzen:**
+  - Inhalte sind nicht einzeln signiert. Ein Mitglied mit Schreibrecht kann im Raum alles ändern, auch die Raum-Info (Name, Mitgliederliste).
+  - Ein Mitglied mit Leserecht könnte zusammen mit dem Server Inhalte unterschieben.
+  - Der Server sieht, welche Konten in welchem Raum sind und mit welchem Recht.
+  - Einen Eigentümerwechsel gibt es nicht. Eine Freigabe lässt sich nur beenden und neu anlegen.
+
 ## Was der Server sieht
 
 - **Pro Konto:**
   - zufällige ID, Anlagezeitpunkt, Anzahl und Größen der Objekte (auf 256 Byte gerundet) und der Vault-Blöcke (auf 4 KiB gerundet);
   - Zeitpunkte und Reihenfolge der Änderungen;
   - Anzahl der Geräte mit Anlage- und „zuletzt gesehen“-Zeitpunkt;
-  - IP-Adressen der Anfragen.
+  - IP-Adressen der Anfragen;
+  - für Freigaben: Raum-IDs, Eigentümer- und Mitgliedskonten mit Recht sowie Größe und Zeitpunkte der Inhalte.
 - **Nicht:**
   - Inhalte, Titel, Beträge, Konten, Bereichsnamen und lokale IDs;
   - Dateinamen, Ordner und Dateitypen des Vaults;

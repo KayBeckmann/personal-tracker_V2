@@ -189,10 +189,17 @@ class _FreigabenSeiteState extends ConsumerState<FreigabenSeite> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelectableText(
-                  code.anzeigen(),
-                  key: const Key('einladung-anzeige'),
-                  style: const TextStyle(fontFamily: 'NotoSansMono', fontSize: 20, letterSpacing: 1),
+                // SelectableText erscheint sonst nicht für Screenreader.
+                Semantics(
+                  label: 'Einladungscode ${code.anzeigen()}',
+                  container: true,
+                  child: ExcludeSemantics(
+                    child: SelectableText(
+                      code.anzeigen(),
+                      key: const Key('einladung-anzeige'),
+                      style: const TextStyle(fontFamily: 'NotoSansMono', fontSize: 20, letterSpacing: 1),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(

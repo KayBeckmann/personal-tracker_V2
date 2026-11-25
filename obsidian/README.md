@@ -50,9 +50,18 @@ Abgeglichen wird bei geöffnetem Obsidian: beim Start, 5 Sekunden nach Änderung
   - `.obsidian/workspace.json` und `workspace-mobile.json`, weil sie je Gerät gelten.
 - **Andere Sync-Programme:** Gleicht schon Syncthing, Obsidian Sync oder Nextcloud denselben Ordner ab, warnt die Vorschau. Zwei Programme für dieselben Dateien können sich gegenseitig Änderungen überschreiben. Für den Anfang einen eigenen Test-Vault verwenden.
 
+## Geteilte Ordner
+
+Freigaben legt man in der Tracker-App an (**Freigaben**); das Plugin übernimmt sie aus dem eigenen Konto.
+
+- **Eigentümer:** Alles unter dem geteilten Ordner geht an die Freigabe. Was man hineinverschiebt, wird geteilt, was man herausnimmt, wieder privat. Beim Hineinschieben wird erneut auf Secrets geprüft.
+- **Mitglied:** Der Ordner erscheint dort, wo man ihn beim Annehmen eingehängt hat (Standard `Geteilt/<Name>`).
+  - Mit Leserecht werden lokale Änderungen nicht hochgeladen. Sie landen als private Kopie unter `Eigene Änderungen/<Name>/`, und die geteilte Fassung kommt zurück.
+- **Zugang weg:** Die Dateien des Ordners gehen in den Papierkorb. Eigene, noch nicht gesendete Änderungen bleiben unter `Eigene Änderungen/`.
+
 ## Wo was liegt
 
-- **Token und Kontoschlüssel:** in der Schlüsselablage von Obsidian (`app.secretStorage`), nicht im Vault-Ordner.
+- **Token, Kontoschlüssel und Raumschlüssel:** in der Schlüsselablage von Obsidian (`app.secretStorage`), nicht im Vault-Ordner.
 - **Abgleichstand:** im gerätebezogenen `localStorage` des Vaults.
 - **`data.json` des Plugins:** nur Serveradresse, Größengrenze und Automatik. Die Datei wird mit synchronisiert.
 - **Trennen:** meldet das Gerät beim Server ab. Die Dateien bleiben unverändert.
