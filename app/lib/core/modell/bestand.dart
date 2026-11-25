@@ -1,4 +1,5 @@
 import 'aufgabe.dart';
+import 'einkauf.dart';
 import 'finanzen.dart';
 import 'konflikt.dart';
 import 'notiz.dart';
@@ -16,6 +17,11 @@ class Bestand {
     this.plaene = const {},
     this.konflikte = const {},
     this.raeume = const {},
+    this.filialen = const {},
+    this.preise = const {},
+    this.einkaufslisten = const {},
+    this.posten = const {},
+    this.einkaeufe = const {},
     this.einstellungen = const Einstellungen(),
   });
 
@@ -31,6 +37,14 @@ class Bestand {
 
   /// Geteilte Kalender, Aufgabenlisten und Vault-Ordner (eigene und fremde).
   final Map<String, Raum> raeume;
+
+  /// Einkauf (M6): Filialen, beobachtete Preise, Listen, Posten und
+  /// abgeschlossene Einkäufe.
+  final Map<String, Filiale> filialen;
+  final Map<String, Preis> preise;
+  final Map<String, Einkaufsliste> einkaufslisten;
+  final Map<String, Posten> posten;
+  final Map<String, Einkauf> einkaeufe;
   final Einstellungen einstellungen;
 
   Bestand kopie({
@@ -42,6 +56,11 @@ class Bestand {
     Map<String, Plan>? plaene,
     Map<String, Konflikt>? konflikte,
     Map<String, Raum>? raeume,
+    Map<String, Filiale>? filialen,
+    Map<String, Preis>? preise,
+    Map<String, Einkaufsliste>? einkaufslisten,
+    Map<String, Posten>? posten,
+    Map<String, Einkauf>? einkaeufe,
     Einstellungen? einstellungen,
   }) =>
       Bestand(
@@ -53,6 +72,11 @@ class Bestand {
         plaene: plaene ?? this.plaene,
         konflikte: konflikte ?? this.konflikte,
         raeume: raeume ?? this.raeume,
+        filialen: filialen ?? this.filialen,
+        preise: preise ?? this.preise,
+        einkaufslisten: einkaufslisten ?? this.einkaufslisten,
+        posten: posten ?? this.posten,
+        einkaeufe: einkaeufe ?? this.einkaeufe,
         einstellungen: einstellungen ?? this.einstellungen,
       );
 
@@ -84,5 +108,30 @@ class Bestand {
   List<Raum> raeumeDerArt(RaumArt art) => raeume.values.where((r) => r.art == art).toList()..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
   int get anzahlDatensaetze =>
-      termine.length + aufgaben.length + notizen.length + konten.length + buchungen.length + plaene.length;
+      termine.length +
+      aufgaben.length +
+      notizen.length +
+      konten.length +
+      buchungen.length +
+      plaene.length +
+      filialen.length +
+      preise.length +
+      einkaufslisten.length +
+      posten.length +
+      einkaeufe.length;
+
+  /// Raum eines geteilten Datensatzes (`null` = privat oder unbekannt).
+  String? raumVon(String bereich, String id) => switch (bereich) {
+        'termine' => termine[id]?.raum,
+        'aufgaben' => aufgaben[id]?.raum,
+        'filialen' => filialen[id]?.raum,
+        'preise' => preise[id]?.raum,
+        'einkaufslisten' => einkaufslisten[id]?.raum,
+        'posten' => posten[id]?.raum,
+        _ => null,
+      };
+
+  /// Offene Posten einer Liste (noch nicht gekauft).
+  List<Posten> postenVon(String listeId) => posten.values.where((p) => p.listeId == listeId && p.offen).toList()
+    ..sort((a, b) => a.abgehakt == b.abgehakt ? a.name.toLowerCase().compareTo(b.name.toLowerCase()) : (a.abgehakt ? 1 : -1));
 }

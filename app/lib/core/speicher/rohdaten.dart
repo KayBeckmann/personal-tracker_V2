@@ -1,4 +1,5 @@
 import '../modell/aufgabe.dart';
+import '../modell/einkauf.dart';
 import '../modell/bestand.dart';
 import '../modell/finanzen.dart';
 import '../modell/konflikt.dart';
@@ -17,6 +18,11 @@ Rohdaten rohdatenVon(Bestand b) => {
       'plaene': [for (final p in b.plaene.values) p.toJson()],
       'konflikte': [for (final k in b.konflikte.values) k.toJson()],
       'raeume': [for (final r in b.raeume.values) r.toJson()],
+      'filialen': [for (final x in b.filialen.values) x.toJson()],
+      'preise': [for (final x in b.preise.values) x.toJson()],
+      'einkaufslisten': [for (final x in b.einkaufslisten.values) x.toJson()],
+      'posten': [for (final x in b.posten.values) x.toJson()],
+      'einkaeufe': [for (final x in b.einkaeufe.values) x.toJson()],
       'einstellungen': [b.einstellungen.toJson()],
     };
 
@@ -52,6 +58,11 @@ Bestand bestandAus(Rohdaten d) {
     plaene: plaene,
     konflikte: bereich('konflikte', Konflikt.fromJson, (k) => k.id),
     raeume: bereich('raeume', Raum.fromJson, (r) => r.id),
+    filialen: bereich('filialen', Filiale.fromJson, (x) => x.id),
+    preise: bereich('preise', Preis.fromJson, (x) => x.id),
+    einkaufslisten: bereich('einkaufslisten', Einkaufsliste.fromJson, (x) => x.id),
+    posten: bereich('posten', Posten.fromJson, (x) => x.id),
+    einkaeufe: bereich('einkaeufe', Einkauf.fromJson, (x) => x.id),
     einstellungen: einst.isEmpty ? const Einstellungen() : lies('einstellungen', einst.first, Einstellungen.fromJson),
   );
 }

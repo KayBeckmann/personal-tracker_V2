@@ -11,6 +11,7 @@ import 'krypto/kdf.dart';
 import 'krypto/recovery_schluessel.dart';
 import 'krypto/schluesselbund.dart';
 import 'modell/aufgabe.dart';
+import 'modell/einkauf.dart';
 import 'modell/bestand.dart';
 import 'modell/datum.dart';
 import 'modell/finanzen.dart';
@@ -21,6 +22,7 @@ import 'speicher/ablage.dart';
 import 'speicher/backup.dart';
 import 'speicher/rohdaten.dart';
 import 'speicher/schema.dart';
+import 'sync/sync_motor.dart';
 import 'sync/sync_stand.dart';
 
 final ablageProvider = Provider<Ablage>((ref) => throw UnimplementedError('Ablage wird in main() geöffnet'));
@@ -282,8 +284,8 @@ class SitzungNotifier extends Notifier<Sitzung> {
         // Geteilte Einträge mit Leserecht bleiben unverändert (die
         // Oberfläche bietet das gar nicht erst an).
         for (final (bereich, id, json) in datensaetze) {
-          if (bereich != 'termine' && bereich != 'aufgaben') continue;
-          final vorher = bereich == 'termine' ? s.bestand.termine[id]?.raum : s.bestand.aufgaben[id]?.raum;
+          if (!SyncMotor.raumBereiche.contains(bereich)) continue;
+          final vorher = s.bestand.raumVon(bereich, id);
           for (final r in [vorher, json?['raum'] as String?]) {
             if (r != null && s.bestand.raeume[r]?.schreibbar == false) throw StateError('Dieser Eintrag ist nur lesbar.');
           }
@@ -443,6 +445,142 @@ class SitzungNotifier extends Notifier<Sitzung> {
   Future<void> speichereEinstellungen(Einstellungen e) async {
     await _schreiben('einstellungen', 'app', e.toJson(), (b) => b.kopie(einstellungen: e));
     unawaited(_erinnerungenPlanen());
+  }
+
+  // ---------------------------------------------------------------------
+  // Einkauf (M6)
+
+  Future<void> speichereFiliale(Filiale f) async {
+    final x = f.kopie(geaendert: _jetzt.toUtc());
+    await _schreiben('filialen', x.id, x.toJson(), (b) => b.kopie(filialen: {...b.filialen, x.id: x}));
+  }
+
+  /// Löscht eine Filiale samt ihrer Preise (Listen verlieren nur die Zuordnung).
+  Future<void> loescheFiliale(String id) async {
+    final preise = [for (final p in _b.preise.values) if (p.filialeId == id) p.id];
+    final listen = [for (final l in _b.einkaufslisten.values) if (l.filialeId == id) l.kopie(filialeId: () => null, geaendert: _jetzt.toUtc())];
+    await _aendern(
+      [('filialen', id, null), for (final p in preise) ('preise', p, null), for (final l in listen) ('einkaufslisten', l.id, l.toJson())],
+      (b) => b.kopie(
+        filialen: {...b.filialen}..remove(id),
+        preise: {...b.preise}..removeWhere((k, _) => preise.contains(k)),
+        einkaufslisten: {...b.einkaufslisten, for (final l in listen) l.id: l},
+      ),
+    );
+  }
+
+  Future<void> speicherePreis(Preis p) async {
+    final x = p.kopie(geaendert: _jetzt.toUtc());
+    await _schreiben('preise', x.id, x.toJson(), (b) => b.kopie(preise: {...b.preise, x.id: x}));
+  }
+
+  Future<void> loeschePreis(String id) => _loeschen('preise', [id], (b) => b.kopie(preise: {...b.preise}..remove(id)));
+
+  /// Speichert eine Liste. Wird sie geteilt oder wieder privat, ziehen ihre
+  /// Posten mit; eine Filiale aus einem anderen Ort wird für den Raum der
+  /// Liste kopiert (eine Filiale liegt immer an genau einem Ort).
+  Future<Einkaufsliste> speichereListe(Einkaufsliste l) async {
+    var x = l.kopie(geaendert: _jetzt.toUtc());
+    final jetzt = _jetzt.toUtc();
+    final aenderungen = <(String, String, Map<String, dynamic>?)>[];
+    final neuePosten = <String, Posten>{};
+    final neueFilialen = <String, Filiale>{};
+    for (final p in _b.posten.values) {
+      if (p.listeId != x.id || p.raum == x.raum) continue;
+      final n = p.kopie(raum: () => x.raum, geaendert: jetzt);
+      neuePosten[n.id] = n;
+      aenderungen.add(('posten', n.id, n.toJson()));
+    }
+    final f = x.filialeId == null ? null : _b.filialen[x.filialeId];
+    if (f != null && f.raum != x.raum) {
+      final kopie = Filiale(id: neueId(), kette: f.kette, name: f.name, region: f.region, breite: f.breite, laenge: f.laenge, geaendert: jetzt, raum: x.raum);
+      neueFilialen[kopie.id] = kopie;
+      x = x.kopie(filialeId: () => kopie.id);
+      aenderungen.add(('filialen', kopie.id, kopie.toJson()));
+    }
+    aenderungen.add(('einkaufslisten', x.id, x.toJson()));
+    await _aendern(
+      aenderungen,
+      (b) => b.kopie(
+        einkaufslisten: {...b.einkaufslisten, x.id: x},
+        posten: {...b.posten, ...neuePosten},
+        filialen: {...b.filialen, ...neueFilialen},
+      ),
+    );
+    return x;
+  }
+
+  /// Löscht eine Liste mit ihren offenen Posten; Einkäufe (und Buchungen)
+  /// bleiben erhalten.
+  Future<void> loescheListe(String id) async {
+    final posten = [for (final p in _b.posten.values) if (p.listeId == id) p.id];
+    await _aendern(
+      [('einkaufslisten', id, null), for (final p in posten) ('posten', p, null)],
+      (b) => b.kopie(einkaufslisten: {...b.einkaufslisten}..remove(id), posten: {...b.posten}..removeWhere((k, _) => posten.contains(k))),
+    );
+  }
+
+  Future<void> speicherePosten(Posten p) async {
+    final x = p.kopie(geaendert: _jetzt.toUtc(), raum: () => _b.einkaufslisten[p.listeId]?.raum);
+    await _schreiben('posten', x.id, x.toJson(), (b) => b.kopie(posten: {...b.posten, x.id: x}));
+  }
+
+  Future<void> loeschePosten(String id) => _loeschen('posten', [id], (b) => b.kopie(posten: {...b.posten}..remove(id)));
+
+  /// Einkauf abschließen: die abgehakten Posten der Liste gelten als
+  /// gekauft, und genau eine Buchung über [betragCent] entsteht auf
+  /// [kontoId]. Ein Posten kann nur einmal gekauft werden.
+  Future<Einkauf> einkaufAbschliessen({
+    required String listeId,
+    required int betragCent,
+    required String kontoId,
+    required DateTime datum,
+    int? geschaetztCent,
+  }) async {
+    final liste = _b.einkaufslisten[listeId];
+    if (liste == null) throw StateError('Liste nicht gefunden.');
+    if (!_b.konten.containsKey(kontoId)) throw StateError('Konto nicht gefunden.');
+    final gekauft = [for (final p in _b.postenVon(listeId)) if (p.abgehakt) p];
+    if (gekauft.isEmpty) throw StateError('Es ist nichts abgehakt.');
+    final jetzt = _jetzt.toUtc();
+    final filiale = liste.filialeId == null ? null : _b.filialen[liste.filialeId];
+    final einkaufId = neueId();
+    final buchung = Buchung(
+      id: neueId(),
+      kontoId: kontoId,
+      datum: datum,
+      empfaenger: filiale?.anzeige ?? liste.name,
+      betragCent: -betragCent.abs(),
+      status: BuchungsStatus.gebucht,
+      bemerkung: 'Einkauf „${liste.name}“: ${gekauft.length} Posten',
+      geaendert: jetzt,
+    );
+    final einkauf = Einkauf(
+      id: einkaufId,
+      listeId: listeId,
+      filialeId: liste.filialeId,
+      datum: datum,
+      geschaetztCent: geschaetztCent,
+      betragCent: betragCent.abs(),
+      kontoId: kontoId,
+      buchungId: buchung.id,
+      postenIds: [for (final p in gekauft) p.id],
+      geaendert: jetzt,
+    );
+    final posten = [for (final p in gekauft) p.kopie(abgehakt: false, einkaufId: () => einkaufId, geaendert: jetzt)];
+    await _aendern(
+      [
+        ('buchungen', buchung.id, buchung.toJson()),
+        ('einkaeufe', einkauf.id, einkauf.toJson()),
+        for (final p in posten) ('posten', p.id, p.toJson()),
+      ],
+      (b) => b.kopie(
+        buchungen: {...b.buchungen, buchung.id: buchung},
+        einkaeufe: {...b.einkaeufe, einkauf.id: einkauf},
+        posten: {...b.posten, for (final p in posten) p.id: p},
+      ),
+    );
+    return einkauf;
   }
 
   // ---------------------------------------------------------------------

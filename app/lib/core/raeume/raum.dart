@@ -10,7 +10,8 @@ import '../sync/sync_krypto.dart';
 enum RaumArt {
   vault('Vault-Ordner'),
   kalender('Kalender'),
-  aufgaben('Aufgabenliste');
+  aufgaben('Aufgabenliste'),
+  einkauf('Einkaufsliste');
 
   const RaumArt(this.titel);
   final String titel;

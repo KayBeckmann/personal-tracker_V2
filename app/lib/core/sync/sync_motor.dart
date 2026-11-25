@@ -125,12 +125,23 @@ class SyncMotor {
   /// einem Raum, wenn ihr Pfad unter dessen Ordner liegt.
   static String? zielVon(String bereich, Map<String, dynamic>? daten, Iterable<Raum> raeume) {
     if (daten == null) return null;
-    if (bereich == 'termine' || bereich == 'aufgaben') return daten['raum'] as String?;
+    if (raumBereiche.contains(bereich)) return daten['raum'] as String?;
     if (bereich == vaultBereich) return raumFuerPfad(daten['pfad'] as String, raeume)?.id;
     return null;
   }
 
   static String freigabeSchluessel(String id, String? raum) => raum == null ? id : '$id@$raum';
+
+  /// Bereiche, deren Datensätze ein Feld `raum` tragen können.
+  static const raumBereiche = {'termine', 'aufgaben', 'filialen', 'preise', 'einkaufslisten', 'posten'};
+
+  /// Was ein Raum dieser Art enthalten darf.
+  static Set<String> bereicheFuer(RaumArt art) => switch (art) {
+        RaumArt.kalender => {'termine'},
+        RaumArt.aufgaben => {'aufgaben'},
+        RaumArt.vault => {vaultBereich},
+        RaumArt.einkauf => {'einkaufslisten', 'posten', 'filialen', 'preise'},
+      };
 
   /// Der Vault-Raum, unter dessen Ordner [pfad] liegt.
   static Raum? raumFuerPfad(String pfad, Iterable<Raum> raeume) {
@@ -173,7 +184,7 @@ class SyncMotor {
     // Entschlüsseln außerhalb der Sperre.
     final erlaubt = raum == null
         ? {...Ablage.bereiche, vaultBereich}
-        : {'raum', switch (raum.art) { RaumArt.kalender => 'termine', RaumArt.aufgaben => 'aufgaben', RaumArt.vault => vaultBereich }};
+        : {'raum', ...bereicheFuer(raum.art)};
     final umschlaege = <({int seq, Umschlag u, String oid, String daten})>[];
     for (final o in objekte) {
       final u = raum == null ? v.schluessel.entschluesseln(o.id, o.daten) : raum.entschluesseln(o.id, o.daten);
@@ -637,7 +648,7 @@ class SyncMotor {
     final orte = await stand.orte(tx: tx);
     final basis = await stand.basis(tx: tx);
     final vBasis = await vault.basis(tx: tx);
-    for (final bereich in ['termine', 'aufgaben']) {
+    for (final bereich in raumBereiche) {
       for (final d in await ablage.lesen(dek, bereich, tx: tx)) {
         if (d['raum'] != r.id) continue;
         final k = SyncStand.schluessel(bereich, d['id'] as String);
@@ -727,7 +738,7 @@ class SyncMotor {
         if (daten != null && bereich == vaultBereich) {
           vd = VaultDatei.fromJson(daten);
           daten = vd.zumSenden(wurzel: zr?.ordner);
-        } else if (daten != null && (bereich == 'termine' || bereich == 'aufgaben')) {
+        } else if (daten != null && raumBereiche.contains(bereich)) {
           daten = {...daten}..remove('raum');
         }
         if (hatBasis && alt != ziel) {
