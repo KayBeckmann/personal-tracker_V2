@@ -294,7 +294,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
       return _json({'ok': true});
     })
     ..put('/v1/geraete/<id>', (Request r, String id) async {
-      final g = verwaltend(r);
+      final g = angemeldet(r);
       if (id != g.id) throw _Fehler(403, 'verboten', 'Nur das eigene Gerät lässt sich umbenennen.');
       s.geraetUmbenennen(id, feld<String>(await lies(r), 'name', maxLaenge: 2048));
       return _json({'ok': true});
