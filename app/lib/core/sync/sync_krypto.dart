@@ -184,9 +184,14 @@ class Kopplungscode {
 
   String paket(String konto, Kontoschluessel k) => _verpacken(_schluessel, {'konto': konto, 'k': _b64(k.bytes)}, 'ptv2-kopplung|$slot');
 
-  ({String konto, Kontoschluessel schluessel})? paketOeffnen(String paket) {
+  /// Paket für eine Agenten-Brücke: zusätzlich Name und Rechte.
+  String agentPaket(String konto, Kontoschluessel k, Map<String, dynamic> agent) =>
+      _verpacken(_schluessel, {'konto': konto, 'k': _b64(k.bytes), 'agent': agent}, 'ptv2-kopplung|$slot');
+
+  /// [agent]: der Code ist für die Agenten-Brücke `pt-agent` gedacht.
+  ({String konto, Kontoschluessel schluessel, bool agent})? paketOeffnen(String paket) {
     final j = _entpacken(_schluessel, paket, 'ptv2-kopplung|$slot');
     if (j == null) return null;
-    return (konto: j['konto'] as String, schluessel: Kontoschluessel(_vonB64(j['k'] as String)));
+    return (konto: j['konto'] as String, schluessel: Kontoschluessel(_vonB64(j['k'] as String)), agent: j['agent'] != null);
   }
 }

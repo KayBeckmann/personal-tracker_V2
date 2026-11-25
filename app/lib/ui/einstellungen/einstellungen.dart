@@ -6,6 +6,7 @@ import '../../core/krypto/kdf.dart';
 import '../../core/sitzung.dart';
 import '../../core/speicher/backup.dart';
 import '../../version.dart';
+import '../agent/agent.dart';
 import '../bausteine.dart';
 import '../dateien.dart';
 import '../format.dart';
@@ -336,6 +337,7 @@ class _EinstellungenSeiteState extends ConsumerState<EinstellungenSeite> {
               ),
             ),
             SyncKarte(vorherSichern: _sichern),
+            const AgentKarte(),
           ],
         ),
         const SizedBox(height: 6),

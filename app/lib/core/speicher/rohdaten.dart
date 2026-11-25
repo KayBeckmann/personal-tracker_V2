@@ -1,3 +1,4 @@
+import '../modell/agent.dart';
 import '../modell/aufgabe.dart';
 import '../modell/einkauf.dart';
 import '../modell/bestand.dart';
@@ -23,6 +24,9 @@ Rohdaten rohdatenVon(Bestand b) => {
       'einkaufslisten': [for (final x in b.einkaufslisten.values) x.toJson()],
       'posten': [for (final x in b.posten.values) x.toJson()],
       'einkaeufe': [for (final x in b.einkaeufe.values) x.toJson()],
+      'agenten': [for (final x in b.agenten.values) x.toJson()],
+      'agent_protokoll': [for (final x in b.agentProtokoll.values) x.toJson()],
+      'agent_vorschlaege': [for (final x in b.agentVorschlaege.values) x.toJson()],
       'einstellungen': [b.einstellungen.toJson()],
     };
 
@@ -63,6 +67,9 @@ Bestand bestandAus(Rohdaten d) {
     einkaufslisten: bereich('einkaufslisten', Einkaufsliste.fromJson, (x) => x.id),
     posten: bereich('posten', Posten.fromJson, (x) => x.id),
     einkaeufe: bereich('einkaeufe', Einkauf.fromJson, (x) => x.id),
+    agenten: bereich('agenten', AgentZugang.fromJson, (x) => x.id),
+    agentProtokoll: bereich('agent_protokoll', AgentProtokoll.fromJson, (x) => x.id),
+    agentVorschlaege: bereich('agent_vorschlaege', AgentVorschlag.fromJson, (x) => x.id),
     einstellungen: einst.isEmpty ? const Einstellungen() : lies('einstellungen', einst.first, Einstellungen.fromJson),
   );
 }

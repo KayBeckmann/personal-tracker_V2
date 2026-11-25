@@ -8,6 +8,7 @@ import '../../core/modell/datum.dart';
 import '../../core/sitzung.dart';
 import '../../core/sync/sync_dienst.dart';
 import '../aufgaben/aufgaben.dart';
+import '../agent/agent.dart';
 import '../bausteine.dart';
 import '../erfassen.dart';
 import '../finanzen/prognose_anzeige.dart';
@@ -65,6 +66,7 @@ class UebersichtSeite extends ConsumerWidget {
             ),
           ),
         const KonfliktHinweis(),
+        const VorschlagHinweis(),
         if (sicherungAlt)
           Hinweis(
             key: const Key('hinweis-sicherung'),

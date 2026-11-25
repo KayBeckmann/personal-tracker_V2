@@ -80,7 +80,7 @@ class SyncStatus {
 }
 
 /// Ein Gerät des Sync-Kontos (Name nur auf Geräten mit Schlüssel lesbar).
-typedef SyncGeraet = ({String id, String name, DateTime erstellt, DateTime zuletzt, bool dieses});
+typedef SyncGeraet = ({String id, String name, DateTime erstellt, DateTime zuletzt, bool dieses, bool agent});
 
 String standardGeraetName() => kIsWeb ? 'Browser' : 'Android';
 
@@ -219,6 +219,8 @@ class SyncNotifier extends Notifier<SyncStatus> {
       final bericht = await motor.abgleichen();
       if (!ref.mounted || ref.read(sitzungProvider) is! Entsperrt) return bericht;
       if (bericht.lokalGeaendert || bericht.neuAufgebaut) await _sitzung.neuLaden();
+      // Protokoll der KI-Agenten begrenzen (mit Luft, damit nicht jeder Lauf löscht).
+      if (ref.read(bestandProvider).agentProtokoll.length > 600) await _sitzung.agentProtokollKuerzen();
       await _recoveryAbgleichen(v, bericht.konto);
       state = state.mit(
         laeuft: false,
@@ -330,6 +332,10 @@ class SyncNotifier extends Notifier<SyncStatus> {
     final p = code.paketOeffnen(e.paket);
     if (p == null) throw SyncFehler(SyncFehlerArt.daten, 'Das Kopplungspaket ließ sich nicht öffnen.');
     final mitToken = api.mitToken(e.token);
+    if (p.agent) {
+      await mitToken.geraetEntfernen(e.geraet);
+      throw SyncFehler(SyncFehlerArt.daten, 'Das ist ein Code für einen KI-Agenten (pt-agent), nicht für ein Gerät.');
+    }
     final konto = await mitToken.konto();
     final teile = p.schluessel.recoveryTeileAus(konto['schluesselPaket'] as String);
     if (teile == null) throw SyncFehler(SyncFehlerArt.daten, 'Das Schlüsselpaket des Kontos ließ sich nicht öffnen.');
@@ -395,6 +401,7 @@ class SyncNotifier extends Notifier<SyncStatus> {
           erstellt: DateTime.parse(g['erstellt'] as String),
           zuletzt: DateTime.parse(g['zuletzt'] as String),
           dieses: g['id'] == v.geraet,
+          agent: g['art'] == 'agent',
         ),
     ];
   }

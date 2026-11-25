@@ -195,8 +195,13 @@ class SyncApi {
 
   Future<void> geraetEntfernen(String id) => _anfrage('DELETE', '/v1/geraete/$id');
 
-  Future<void> kopplungAnlegen(String slot, String paket, Duration gueltig) =>
-      _anfrage('POST', '/v1/kopplungen', body: {'slot': slot, 'paket': paket, 'gueltigSekunden': gueltig.inSeconds});
+  Future<void> kopplungAnlegen(String slot, String paket, Duration gueltig, {bool agent = false, int? ablaufTage}) => _anfrage('POST', '/v1/kopplungen', body: {
+        'slot': slot,
+        'paket': paket,
+        'gueltigSekunden': gueltig.inSeconds,
+        if (agent) 'art': 'agent',
+        'geraetAblaufTage': ?ablaufTage,
+      });
 
   Future<({String konto, String paket, String geraet, String token})> kopplungEinloesen(String slot, String geraetName) async {
     final j = await _anfrage('POST', '/v1/kopplungen/$slot/einloesen', body: {'geraetName': geraetName});
