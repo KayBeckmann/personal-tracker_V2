@@ -11,9 +11,12 @@ import '../modell/einkauf.dart' show entfernungMeter;
 /// `protokoll/` (siehe `protokoll/REGIONEN.md`). Die Zuordnung freier Texte
 /// folgt denselben Regeln wie der Server (`server/lib/src/regionen.dart`);
 /// beide prüfen `protokoll/regionen-testfaelle.json`.
+///
+/// Ohne Zwischenspeicher des Asset-Bundles: der Provider hält die Daten
+/// selbst, eine zweite Kopie der 600 KB wäre nur Ballast.
 final regionenProvider = FutureProvider<Regionen>((ref) async => Regionen.ausJson(
-      await rootBundle.loadString('assets/regionen-de.json'),
-      await rootBundle.loadString('assets/ketten-de.json'),
+      await rootBundle.loadString('assets/regionen-de.json', cache: false),
+      await rootBundle.loadString('assets/ketten-de.json', cache: false),
     ));
 
 /// Vergleichsform: klein, Umlaute ausgeschrieben, Abkürzungen des

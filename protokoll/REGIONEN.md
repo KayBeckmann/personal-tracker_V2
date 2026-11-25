@@ -20,7 +20,7 @@ Ein Kreis kann mehrere Kfz-Kennzeichen haben (Nordwestmecklenburg: NWM, GVM, GDB
 - **Postleitzahlen je Kreis:** [GeoNames](https://www.geonames.org), CC BY 4.0.
 - **Kfz-Unterscheidungszeichen je Kreis:** aus der Wikipedia-Liste „Liste der Kfz-Kennzeichen in Deutschland“ übernommen (nur die Zuordnung Kürzel → Kreis). Sonderkennzeichen von Behörden und Bundeswehr sind nicht enthalten.
 
-Die Namensnennung steht auch in der App (Einstellungen → Katalog).
+Die Namensnennung steht auch in der App, unten in der Regionsauswahl einer Filiale.
 
 ## Aktualisieren
 
