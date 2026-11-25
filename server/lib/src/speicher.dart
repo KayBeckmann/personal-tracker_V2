@@ -17,7 +17,7 @@ import 'package:sqlite3/sqlite3.dart';
 /// - 3: geteilte Räume mit Mitgliedern, Einladungen, Objekten und Blöcken (M5)
 /// - 4: föderierter Preiskatalog (M7)
 /// - 5: Geräte-Art (Agent) und Ablauf (M8)
-const dbSchema = 5;
+const dbSchema = 6;
 
 final _zufall = Random.secure();
 
@@ -30,6 +30,18 @@ String neueId() => hexVon(zufall(16));
 /// Hash eines hochentropischen Geheimnisses (Gerätetoken, Recovery-Anmeldung).
 /// Ein einfacher SHA-256 genügt, weil die Eingaben 256 Bit Zufall sind.
 String geheimHash(List<int> geheim) => sha256.convert(geheim).toString();
+
+/// Registrierung abgelehnt: Einladungscode fehlt, ist unbekannt, abgelaufen
+/// oder schon benutzt.
+class EinladungFehler implements Exception {
+  EinladungFehler(this.meldung);
+  final String meldung;
+  @override
+  String toString() => meldung;
+}
+
+/// Registrierungscode in Normalform (Großbuchstaben, ohne Trenner).
+String registrierungsCodeNormal(String code) => code.toUpperCase().replaceAll(RegExp(r'[\s\-_.]'), '');
 
 class SpeicherFehler implements Exception {
   SpeicherFehler(this.meldung);
@@ -232,6 +244,15 @@ class Speicher {
       ALTER TABLE kopplungen ADD COLUMN art TEXT NOT NULL DEFAULT 'geraet';
       ALTER TABLE kopplungen ADD COLUMN geraet_ablauf INTEGER;
     '''),
+    5: (db) => db.execute('''
+      ALTER TABLE konten ADD COLUMN kontingent INTEGER;
+      CREATE TABLE registrierungen (
+        hash TEXT PRIMARY KEY,
+        erstellt INTEGER NOT NULL,
+        ablauf INTEGER NOT NULL,
+        benutzt INTEGER
+      );
+    '''),
   };
 
   int get _jetzt => DateTime.now().toUtc().millisecondsSinceEpoch;
@@ -262,11 +283,19 @@ class Speicher {
     required String recoveryHuelle,
     required String schluesselPaket,
     required String geraetName,
+    String? einladung,
   }) =>
       transaktion(() {
         final hash = geheimHash(recoveryAuth);
         if (db.select('SELECT 1 FROM konten WHERE recovery_hash = ?', [hash]).isNotEmpty) {
           throw SpeicherFehler('Für diesen Recovery-Schlüssel gibt es schon ein Konto.');
+        }
+        if (einladung != null) {
+          db.execute(
+            'UPDATE registrierungen SET benutzt = ? WHERE hash = ? AND benutzt IS NULL AND ablauf > ?',
+            [_jetzt, geheimHash(utf8.encode(registrierungsCodeNormal(einladung))), _jetzt],
+          );
+          if (db.updatedRows != 1) throw EinladungFehler('Der Einladungscode ist unbekannt, abgelaufen oder schon benutzt.');
         }
         final konto = neueId();
         db.execute(
@@ -366,6 +395,68 @@ class Speicher {
       });
 
   void kontoLoeschen(String konto) => db.execute('DELETE FROM konten WHERE id = ?', [konto]);
+
+  // -------------------------------------------------------------------
+  // Betrieb (M9): Registrierung, Kontingente, Übersicht
+
+  static const _codeZeichen = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+  /// Neuer Einmal-Code für die Registrierung (Modus `einladung`); der Server
+  /// speichert nur seinen Hash.
+  String registrierungAnlegen({Duration gueltig = const Duration(days: 14)}) {
+    final z = zufall(20);
+    final code = [for (final b in z) _codeZeichen[b % 32]].join();
+    db.execute('INSERT INTO registrierungen (hash, erstellt, ablauf) VALUES (?, ?, ?)',
+        [geheimHash(utf8.encode(code)), _jetzt, _jetzt + gueltig.inMilliseconds]);
+    return [for (var i = 0; i < 20; i += 5) code.substring(i, i + 5)].join('-');
+  }
+
+  /// Kontingent eines Kontos in Byte: eigener Wert oder [standard]; 0 = unbegrenzt.
+  int kontingent(String konto, int standard) =>
+      (db.select('SELECT kontingent FROM konten WHERE id = ?', [konto]).firstOrNull?['kontingent'] as int?) ?? standard;
+
+  /// Setzt das Kontingent ([bytes] `null` = Standard der Instanz).
+  bool kontingentSetzen(String konto, int? bytes) {
+    db.execute('UPDATE konten SET kontingent = ? WHERE id = ?', [bytes, konto]);
+    return db.updatedRows > 0;
+  }
+
+  /// Konto zu einem eindeutigen ID-Anfang (mindestens 6 Zeichen).
+  String? kontoZuPraefix(String praefix) {
+    if (praefix.length < 6) return null;
+    final r = db.select("SELECT id FROM konten WHERE id LIKE ? || '%' LIMIT 2", [praefix.toLowerCase()]);
+    return r.length == 1 ? r.first['id'] as String : null;
+  }
+
+  /// Übersicht für den Betreiber, ohne Inhalte: Konto, Anlage, belegter
+  /// Platz, Kontingent, Geräte und letzter Kontakt.
+  List<Map<String, Object?>> kontenUebersicht() => [
+        for (final r in db.select('''
+          SELECT k.id, k.erstellt, k.kontingent, count(g.id) geraete, max(g.zuletzt) zuletzt
+          FROM konten k LEFT JOIN geraete g ON g.konto = k.id GROUP BY k.id ORDER BY k.erstellt'''))
+          {
+            'konto': r['id'],
+            'erstellt': _iso(r['erstellt'] as int),
+            'belegt': belegt(r['id'] as String),
+            'kontingent': r['kontingent'],
+            'geraete': r['geraete'],
+            'zuletzt': r['zuletzt'] == null ? null : _iso(r['zuletzt'] as int),
+          },
+      ];
+
+  /// Kurzer Zustand für Überwachung: Datenbank lesbar und Kennzahlen.
+  Map<String, Object> zustand() => {
+        'konten': db.select('SELECT count(*) n FROM konten').first['n'] as int,
+        'geraete': db.select('SELECT count(*) n FROM geraete').first['n'] as int,
+        'raeume': db.select('SELECT count(*) n FROM raeume').first['n'] as int,
+        'bytes': (db.select('SELECT coalesce(sum(length(daten)), 0) b FROM objekte').first['b'] as int) +
+            (db.select('SELECT coalesce(sum(length(daten)), 0) b FROM bloecke').first['b'] as int) +
+            (db.select('SELECT coalesce(sum(length(daten)), 0) b FROM raum_objekte').first['b'] as int) +
+            (db.select('SELECT coalesce(sum(length(daten)), 0) b FROM raum_bloecke').first['b'] as int),
+      };
+
+  /// `PRAGMA integrity_check`; `ok` oder die gefundenen Fehler.
+  String pruefen() => db.select('PRAGMA integrity_check').map((r) => r.values.first.toString()).join('\n');
 
   // -------------------------------------------------------------------
   // Kopplung neuer Geräte

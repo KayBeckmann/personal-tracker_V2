@@ -12,7 +12,7 @@ import 'speicher.dart';
 /// Version des Sync-Vertrags (Pfadpräfix `/v1`). Innerhalb einer Version
 /// kommen nur Felder hinzu; Clients ignorieren unbekannte Felder.
 const apiVersion = 1;
-const serverVersion = '1.4.0';
+const serverVersion = '1.5.0';
 
 class Konfiguration {
   const Konfiguration({
@@ -28,6 +28,7 @@ class Konfiguration {
     this.hinterProxy = false,
     this.protokoll,
     this.instanz = 'lokal',
+    this.registrierung = 'offen',
   });
 
   /// Erlaubter Ursprung für die Web-App (CORS). `*` ist vertretbar, weil
@@ -58,6 +59,9 @@ class Konfiguration {
   /// Öffentliche Adresse für den föderierten Katalog (`https://…`);
   /// `lokal` = Katalog nur auf dieser Instanz.
   final String instanz;
+
+  /// Neue Konten: `offen`, `einladung` (Einmal-Code vom Betreiber) oder `zu`.
+  final String registrierung;
 }
 
 class _Fehler implements Exception {
@@ -194,7 +198,8 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
     for (final a in aenderungen) {
       if (!objektId.hasMatch(a.id)) throw _Fehler(400, 'ungueltig', 'Ungültige Objekt-ID.');
     }
-    if (k.maxKonto > 0 && s.belegt(zahler) + aenderungen.fold(0, (n, a) => n + a.daten.length) > k.maxKonto) {
+    final max = s.kontingent(zahler, k.maxKonto);
+    if (max > 0 && s.belegt(zahler) + aenderungen.fold(0, (n, a) => n + a.daten.length) > max) {
       throw _Fehler(413, 'kontingent', 'Der Speicherplatz dieses Kontos ist aufgebraucht.');
     }
     final e = s.schreiben(ort, aenderungen);
@@ -211,7 +216,7 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
     final daten = await roh(r, k.maxBlock);
     if (daten.isEmpty) throw _Fehler(400, 'ungueltig', 'Leerer Block.');
     try {
-      s.blockSchreiben(ort, id, daten, maxKonto: k.maxKonto, zahler: zahler);
+      s.blockSchreiben(ort, id, daten, maxKonto: s.kontingent(zahler, k.maxKonto), zahler: zahler);
     } on SpeicherFehler catch (e) {
       throw _Fehler(413, 'kontingent', e.meldung);
     }
@@ -244,18 +249,42 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
   }
 
   final app = Router()
-    ..get('/v1/info', (Request r) => _json({'dienst': 'personal-tracker-sync', 'api': apiVersion, 'version': serverVersion, 'instanz': s.instanz}))
+    ..get('/v1/info', (Request r) => _json({
+          'dienst': 'personal-tracker-sync',
+          'api': apiVersion,
+          'version': serverVersion,
+          'instanz': s.instanz,
+          'registrierung': k.registrierung,
+          if (k.maxKonto > 0) 'kontingent': k.maxKonto,
+        }))
+    ..get('/v1/gesund', (Request r) {
+      // Für die Überwachung: Datenbank antwortet. Keine Kennzahlen nach außen.
+      try {
+        s.db.select('SELECT 1');
+        return _json({'ok': true, 'version': serverVersion});
+      } catch (_) {
+        return _json({'ok': false}, status: 503);
+      }
+    })
     ..post('/v1/konten', (Request r) async {
       begrenzen(r);
+      if (k.registrierung == 'zu') throw _Fehler(403, 'registrierung-zu', 'Auf diesem Server lassen sich keine neuen Konten anlegen.');
       final j = await lies(r);
+      final einladung = j['einladung'];
+      if (k.registrierung == 'einladung' && (einladung is! String || einladung.isEmpty || einladung.length > 64)) {
+        throw _Fehler(403, 'einladung-noetig', 'Für ein Konto auf diesem Server ist ein Einladungscode des Betreibers nötig.');
+      }
       try {
         final e = s.kontoAnlegen(
           recoveryAuth: geheimnis(j, 'recoveryAuth'),
           recoveryHuelle: feld<String>(j, 'recoveryHuelle'),
           schluesselPaket: feld<String>(j, 'schluesselPaket'),
           geraetName: feld<String>(j, 'geraetName', maxLaenge: 2048),
+          einladung: k.registrierung == 'einladung' ? einladung as String : null,
         );
         return _json({'konto': e.konto, 'geraet': e.geraet, 'token': e.token}, status: 201);
+      } on EinladungFehler catch (e) {
+        throw _Fehler(403, 'einladung-ungueltig', e.meldung);
       } on SpeicherFehler catch (e) {
         throw _Fehler(409, 'vorhanden', e.meldung);
       }
@@ -269,7 +298,14 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
     })
     ..get('/v1/konto', (Request r) {
       final g = angemeldet(r);
-      return _json({...s.kontoInfo(g.konto), 'geraet': g.id, 'geraete': s.geraete(g.konto)});
+      final max = s.kontingent(g.konto, k.maxKonto);
+      return _json({
+        ...s.kontoInfo(g.konto),
+        'geraet': g.id,
+        'geraete': s.geraete(g.konto),
+        'belegtGesamt': s.belegt(g.konto),
+        if (max > 0) 'kontingent': max,
+      });
     })
     ..put('/v1/konto/recovery', (Request r) async {
       final g = verwaltend(r);
