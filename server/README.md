@@ -49,7 +49,10 @@ Davor einen Reverse-Proxy mit TLS setzen. Läuft er auf derselben Maschine, zus�
 | `PT_OEFFENTLICHE_URL` | – | eigene `https://…`-Adresse; nur dann nimmt die Instanz am föderierten Preiskatalog teil |
 | `PT_KATALOG_PEERS` | – | Startliste anderer Katalog-Instanzen, durch Komma getrennt |
 | `PT_KATALOG_MINUTEN` | `10` | Abstand des Abrufs anderer Instanzen |
-| `PT_MAX_KONTO_MB` | – (unbegrenzt) | Speicherplatz je Konto in MiB (Objekte und Dateiblöcke des Vault-Syncs) |
+| `PT_MAX_KONTO_MB` | – (unbegrenzt) | Standard-Kontingent je Konto in MiB (Objekte, Dateiblöcke, eigene Räume); je Konto änderbar mit `pt-sync kontingent` |
+| `PT_REGISTRIERUNG` | `offen` | neue Konten: `offen`, `einladung` (Einmal-Code aus `pt-sync einladung`) oder `zu` |
+
+Gehostet für andere (Registrierung, Kontingente, Überwachung, Sicherung, Updates, Löschung): **[BETRIEB.md](BETRIEB.md)**.
 
 ## Sicherung und Wiederherstellung (Server)
 
@@ -59,6 +62,10 @@ Die Datenbank enthält nur Geheimtext. Eine Sicherung ist deshalb unkritisch zu 
 # Konsistente Kopie, auch bei laufendem Server:
 docker compose exec sync pt-sync sichern /daten/sicherung-$(date +%F).db
 docker compose cp sync:/daten/sicherung-$(date +%F).db .
+
+# Regelmäßig mit Prüfung und Rotation (cron): betrieb/sichern.sh /var/backups/pt-sync 14
+# Eine Kopie prüfen, ohne sie zu verändern:
+docker compose exec sync pt-sync pruefen /daten/sicherung-2026-11-24.db
 
 # Wiederherstellen:
 docker compose stop sync
@@ -87,6 +94,7 @@ Mit offener Föderation kann jede Instanz teilnehmen und beliebig viele Pseudony
 - **Ablauf:** `git pull && docker compose up -d --build`.
 - **Datenbank:** Das Schema wird beim Start migriert, in einer Transaktion. Vor größeren Updates eine Sicherung ziehen (siehe oben).
 - **Rückweg:** Eine ältere Server-Version verweigert eine bereits migrierte Datenbank. Dann die vorherige Sicherung zurückspielen.
+- **Probe:** `betrieb/upgrade_probe.sh <pt-sync-alt> <pt-sync-neu>` prüft das mit synthetischen Daten: Migration, Token und Daten bleiben, alte Version verweigert, Rückweg mit Sicherung.
 - **Vertrag:** Die API-Version steht im Pfad (`/v1`). Siehe [API.md](API.md), „Kompatibilität“.
 
 ## Umzug auf einen anderen Server
@@ -98,6 +106,8 @@ Der Umzug ist ohne Server-Export möglich:
 3. Mit der neuen Adresse und dem Recovery-Schlüssel wieder **verbinden**. Dadurch lädt das Gerät alles hoch.
 4. Auf den anderen Geräten ebenfalls trennen und mit demselben Recovery-Schlüssel verbinden. Das Konto existiert dann schon, die Daten werden zusammengeführt, Dubletten entstehen nicht.
 5. Auf dem alten Server zuletzt „Trennen … und Konto löschen“ wählen oder ihn abschalten.
+
+**Vault-Dateien in Blöcken** (große Dateien) lädt beim Umzug das Obsidian-Plugin wieder hoch, denn es hat alle Dateien. Die App hat große Dateien nur, wenn sie einmal geöffnet wurden. Ohne Plugin also vorher den Server-Umzug per Dateikopie wählen.
 
 Alternativ lässt sich die Datei `sync.db` 1:1 auf den neuen Server kopieren. Die Apps brauchen dann nur die neue Adresse; dafür trennen und mit dem Recovery-Schlüssel neu verbinden.
 

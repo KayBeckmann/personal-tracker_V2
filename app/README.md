@@ -24,6 +24,8 @@ flutter run -d chrome             # oder ein Android-Gerät
 ```bash
 tool/web_bauen.sh                 # build/web, vollständig offlinefähig (eigener Service Worker)
 flutter build apk --release --split-per-abi   # braucht android/key.properties
+# Optional: gehostete Instanz als vorausgewählte Wahl beim Verbinden (siehe server/BETRIEB.md)
+# … --dart-define=PT_HOSTED_URL=https://sync.example.org --dart-define=PT_HOSTED_NAME="…" --dart-define=PT_HOSTED_HINWEIS="…"
 ```
 
 - **Web:** CanvasKit und Schriften liegen im Build (`--no-web-resources-cdn`),

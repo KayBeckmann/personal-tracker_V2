@@ -1,6 +1,6 @@
 # Personal Tracker V2
 
-**Status: Meilensteine M1–M8 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen; dazu Einkaufslisten mit Filialpreisen, ein freiwilliger, föderierter Preiskatalog und ein eng begrenzter Zugang für den eigenen KI-Agenten.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) [obsidian/](obsidian/README.md) (Plugin) und [agent/](agent/README.md) (MCP-Brücke). Ein gehostetes Angebot gibt es noch nicht (M9). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
+**Status: Meilensteine M1–M9 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen; dazu Einkaufslisten mit Filialpreisen, ein freiwilliger, föderierter Preiskatalog und ein eng begrenzter Zugang für den eigenen KI-Agenten; betriebsfertig für Self-Hosting und ein gehostetes Angebot.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) [obsidian/](obsidian/README.md) (Plugin) und [agent/](agent/README.md) (MCP-Brücke). Ein gehostetes Angebot ist technisch vorbereitet, aber **nicht** in Betrieb: Preise, Verträge, Hostingort und Freigabe stehen aus. Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
 
 ## Produktidee
 
@@ -85,6 +85,20 @@ Weitere besprochene Anforderungen sind gezielte private Datei- und Ordnerfreigab
 - **Zugangsdatei:** mit Passphrase verschlüsselt; die Passphrase kann aus `pass` kommen.
 - **Grenze:** Die Modulrechte setzt die Brücke durch, nicht die Kryptografie. Details: [server/SICHERHEIT.md](server/SICHERHEIT.md#ki-agenten-m8).
 - **Server 1.4.0:** DB-Schema 5. App-Schema 7.
+
+## Stand M9 (technisch umgesetzt, Freigabe offen)
+
+- **Hosting wählbar:** Eine beim Bauen eingetragene Instanz steht beim Verbinden als erste, vorausgewählte Option mit Hinweis „kostenpflichtig“. „Eigener Server“ ist gleichwertig daneben. Es lädt nichts hoch, bevor man „Verbinden“ wählt.
+- **Registrierung:** Der Server kennt drei Modi: offen, nur mit Einmal-Einladungscode des Betreibers oder zu. Bestehende Konten melden sich immer an.
+- **Kontingente:** Es gibt einen Standard und Werte je Konto. Die App zeigt „Speicher auf dem Server: x von y MiB“.
+- **Betrieb:** Betreiber-Befehle für Einladungen, Kontenliste, Kontingent, Konto löschen, Status und Prüfung. Dazu Healthcheck `/v1/gesund`, Compose mit Healthcheck und Protokollrotation, Sicherungs-Skript mit Prüfung und Rotation sowie eine Upgrade/Rollback-Probe. Anleitung: [server/BETRIEB.md](server/BETRIEB.md), Datenschutz-Entwurf: [server/DATENSCHUTZ-ENTWURF.md](server/DATENSCHUTZ-ENTWURF.md).
+- **Finalabnahme (lokal, Staging, synthetische Daten):**
+  - Die App läuft ohne Konto und lässt sich aus einer Sicherung wiederherstellen.
+  - Hosting im echten Docker-Image hinter TLS, mit Einladung und Kontingent; ein zweites Gerät kommt per Kopplungscode dazu.
+  - Die Betreibersicht enthält keinen Klartext.
+  - Umzug zu Self-Host und Löschen des Hosted-Kontos ohne Datenverlust und ohne Dubletten; Offline-Weiterarbeit.
+- **Nicht freigegeben:** produktiver Betrieb, Preise und Zahlung. Das entscheidet Kay gesondert.
+- **Server 1.5.0:** DB-Schema 6. App 0.9.0.
 
 ## Mock-ups
 

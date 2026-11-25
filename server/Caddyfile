@@ -1,8 +1,27 @@
 # Eigene Domain statt sync.example.org eintragen. Caddy holt das
-# TLS-Zertifikat selbst (Let's Encrypt).
+# TLS-Zertifikat selbst (Let's Encrypt). Caddy schreibt ohne `log`-Direktive
+# keine Zugriffsprotokolle – so bleibt es.
 sync.example.org {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
 	reverse_proxy sync:8743
 	request_body {
 		max_size 8MB
 	}
 }
+
+# Optional: Web-App unter eigener Adresse ausliefern (Build aus
+# `app/tool/web_bauen.sh`, Volume in compose.yaml einkommentieren).
+# Dann in compose.yaml PT_URSPRUNG auf diese Adresse setzen.
+#
+# tracker.example.org {
+# 	encode zstd gzip
+# 	root * /srv/web
+# 	file_server
+# 	header {
+# 		Strict-Transport-Security "max-age=31536000"
+# 		X-Content-Type-Options nosniff
+# 		Referrer-Policy no-referrer
+# 		Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://sync.example.org; worker-src 'self' blob:; frame-ancestors 'none'"
+# 	}
+# }
