@@ -1,6 +1,6 @@
 # Geteilte Räume (M5): Freigaben an andere Personen
 
-Ein **Raum** ist etwas Geteiltes: ein Vault-Ordner, ein Kalender oder eine Aufgabenliste. Er gehört einem Konto, dem Eigentümer. Andere Konten werden per **Einladungscode** Mitglied, mit `lesen` oder `schreiben`. Alles andere bleibt privat; eine Familien- oder Server-Admin-Rolle gibt keine Einsicht. Server-Endpunkte: [server/API.md](../server/API.md), Abschnitt „Geteilte Räume“.
+Ein **Raum** ist etwas Geteiltes: ein Vault-Ordner, ein Kalender, eine Aufgabenliste oder eine Einkaufsliste (M6). Er gehört einem Konto, dem Eigentümer. Andere Konten werden per **Einladungscode** Mitglied, mit `lesen` oder `schreiben`. Alles andere bleibt privat; eine Familien- oder Server-Admin-Rolle gibt keine Einsicht. Server-Endpunkte: [server/API.md](../server/API.md), Abschnitt „Geteilte Räume“.
 
 ## Schlüssel
 
@@ -32,7 +32,7 @@ Der Server sieht den Code nie. Er kann weder Paket noch Schlüssel lesen und kei
 - **Objekte:** Objekt-ID `hex(HMAC-SHA256(idSchluessel, "<bereich>/<id>"))`, die ersten 16 Byte. Der Umschlag ist derselbe wie im Konto (`{b, i, s, d}`, auf 256 Byte aufgefüllt), verschlüsselt mit dem Raumschlüssel der aktuellen Epoche. AAD ist `ptv2-raum-objekt|<raum>|<objekt-id>`. Gespeichert wird `{"e": <epoche>, "n": …, "c": …}`.
 - **Blöcke:** wie im Konto, aber AAD `ptv2-raum-block|<raum>|<block-id>` und mit vorangestellter Epoche (4 Byte, Big Endian): `epoche || nonce || Geheimtext`.
 - **Raum-Info:** Objekt `raum/info`, nur vom Eigentümer geschrieben: `{name, art, von, mitglieder: [{name, recht}]}`. Mitglieder sehen so, wer dabei ist.
-- **Bereiche:** `vault` (Pfad relativ zum geteilten Ordner), `termine`, `aufgaben`. Lokal bekommen Termine und Aufgaben das Feld `raum`. Vault-Dateien liegen beim Eigentümer unter dem geteilten Ordner, beim Mitglied unter einem selbst gewählten Ordner (Standard `Geteilt/<Name>`).
+- **Bereiche:** `vault` (Pfad relativ zum geteilten Ordner), `termine`, `aufgaben`; Einkaufslisten: `einkaufslisten`, `posten`, `filialen`, `preise`. Einkäufe und ihre Buchungen bleiben immer privat. Lokal bekommen Termine und Aufgaben das Feld `raum`. Vault-Dateien liegen beim Eigentümer unter dem geteilten Ordner, beim Mitglied unter einem selbst gewählten Ordner (Standard `Geteilt/<Name>`).
 
 ## Rechte
 

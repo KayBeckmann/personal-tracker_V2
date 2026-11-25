@@ -1,6 +1,6 @@
 # Personal Tracker V2
 
-**Status: Meilensteine M1–M5 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) und [obsidian/](obsidian/README.md) (Plugin). Einkaufslisten, Preiskatalog, Agenten-Zugang und ein gehostetes Angebot gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
+**Status: Meilensteine M1–M6 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen; dazu Einkaufslisten mit Filialpreisen.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) und [obsidian/](obsidian/README.md) (Plugin). Globaler Preiskatalog, Agenten-Zugang und ein gehostetes Angebot gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
 
 ## Produktidee
 
@@ -59,6 +59,14 @@ Weitere besprochene Anforderungen sind gezielte private Datei- und Ordnerfreigab
   - Seine noch nicht gesendeten Änderungen bleiben ihm privat erhalten.
   - Schon Geladenes lässt sich nicht zurückholen.
 - **Server 1.2.0:** DB-Schema 3. Vertrag in [server/API.md](server/API.md), Protokoll in [protokoll/RAEUME.md](protokoll/RAEUME.md).
+
+## Stand M6 (umgesetzt, Abnahme auf Geräten offen)
+
+- **Einkaufslisten:** Posten mit Menge und Einheit (Stück, Packung, g, kg, ml, l) und optionaler Variante. Listen lassen sich wie Kalender teilen; dann teilen sie auch Preise und Filialen.
+- **Filialen:** je Kette und Standort getrennt (zwei Aldi-Filialen bleiben zwei), optional mit Region und Kartenposition. Die Position wird nur auf Knopfdruck bestimmt und verschlüsselt gespeichert; eine Karte oder einen Kartendienst gibt es nicht. „Nächste“ wählt die nächstgelegene Filiale.
+- **Preise:** je Filiale mit Packungspreis, Packungsgröße, Datum und Herkunft. Die App rechnet den Grundpreis (€/kg, €/l, €/Stück).
+- **Schätzung:** Die Listensumme nutzt den jüngsten Preis der gewählten Filiale, ersatzweise derselben Region (als Schätzung markiert). Ein unbekannter Preis bleibt unbekannt und zählt nicht als 0 €.
+- **Einkauf abschließen:** Die abgehakten Posten ergeben einen Vorschlag; mit dem bezahlten Betrag und dem Konto entsteht genau eine Buchung im eigenen Haushaltsbuch. Gekaufte Posten verschwinden von der Liste; nichts wird doppelt gebucht. Am globalen Preiskatalog nimmt nichts automatisch teil.
 
 ## Mock-ups
 

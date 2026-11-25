@@ -1,7 +1,7 @@
 {
   "id": "personal-tracker-sync",
   "name": "Personal Tracker Sync",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minAppVersion": "1.11.4",
   "description": "Gleicht den ganzen Vault Ende-zu-Ende-verschlüsselt mit einem selbst gehosteten Personal-Tracker-Server ab.",
   "author": "Kay Beckmann",
