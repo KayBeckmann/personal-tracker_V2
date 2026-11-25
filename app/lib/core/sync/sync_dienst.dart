@@ -35,6 +35,8 @@ class SyncStatus {
     this.vaultGesperrt = const {},
     this.vaultZuGross = const {},
     this.vaultFehlt = const {},
+    this.belegt,
+    this.kontingent,
   });
 
   final bool verbunden;
@@ -54,6 +56,11 @@ class SyncStatus {
   final Set<String> vaultZuGross;
   final Set<String> vaultFehlt;
 
+  /// Belegter Platz des Kontos auf dem Server (Byte) und sein Kontingent
+  /// (`null` = unbegrenzt), Stand des letzten Abgleichs.
+  final int? belegt;
+  final int? kontingent;
+
   SyncStatus mit({
     bool? laeuft,
     DateTime? letzter,
@@ -63,6 +70,8 @@ class SyncStatus {
     Set<String>? vaultGesperrt,
     Set<String>? vaultZuGross,
     Set<String>? vaultFehlt,
+    int? belegt,
+    int? Function()? kontingent,
   }) =>
       SyncStatus(
         verbunden: verbunden,
@@ -76,6 +85,8 @@ class SyncStatus {
         vaultGesperrt: vaultGesperrt ?? this.vaultGesperrt,
         vaultZuGross: vaultZuGross ?? this.vaultZuGross,
         vaultFehlt: vaultFehlt ?? this.vaultFehlt,
+        belegt: belegt ?? this.belegt,
+        kontingent: kontingent != null ? kontingent() : this.kontingent,
       );
 }
 
@@ -231,6 +242,8 @@ class SyncNotifier extends Notifier<SyncStatus> {
         vaultGesperrt: bericht.vaultGesperrt,
         vaultZuGross: bericht.vaultZuGross,
         vaultFehlt: bericht.vaultFehlt,
+        belegt: (bericht.konto?['belegtGesamt'] as num?)?.toInt(),
+        kontingent: () => (bericht.konto?['kontingent'] as num?)?.toInt(),
       );
       return bericht;
     } catch (e) {
@@ -260,15 +273,22 @@ class SyncNotifier extends Notifier<SyncStatus> {
   /// Mit dem Recovery-Schlüssel verbinden: legt das Konto an oder meldet
   /// sich bei einem vorhandenen an. Alle lokalen Daten werden danach
   /// verschlüsselt hochgeladen bzw. mit dem Konto zusammengeführt.
-  Future<SyncBericht?> verbinden({required String server, required RecoverySchluessel recovery, String? geraetName}) async {
+  ///
+  /// [einladung]: Einmal-Code des Betreibers, wenn der Server neue Konten
+  /// nur so annimmt (`registrierung: einladung`).
+  Future<SyncBericht?> verbinden({required String server, required RecoverySchluessel recovery, String? geraetName, String? einladung}) async {
     final s = _offen;
     final api = _api(server);
-    await api.info();
+    final info = await api.info();
+    final registrierung = info['registrierung'] as String? ?? 'offen';
     final name = geraetName ?? standardGeraetName();
     final passtLokal = s.bund.mitRecovery(recovery) != null;
+    final einladungText = einladung?.trim();
+    // Ohne passenden Code gar nicht erst anlegen: vielleicht gibt es das Konto schon.
+    final anlegen = registrierung == 'offen' || (registrierung == 'einladung' && (einladungText?.isNotEmpty ?? false));
     ({String konto, String geraet, String token})? neu;
     Kontoschluessel? ks;
-    if (passtLokal) {
+    if (passtLokal && anlegen) {
       try {
         ks = Kontoschluessel.neu();
         neu = await api.kontoAnlegen(
@@ -276,6 +296,7 @@ class SyncNotifier extends Notifier<SyncStatus> {
           recoveryHuelle: recovery.huelleFuer(ks),
           schluesselPaket: ks.schluesselPaket(RecoveryTeile.von(recovery)),
           geraetName: ks.geraetName(name),
+          einladung: registrierung == 'einladung' ? einladungText : null,
         );
       } on SyncFehler catch (e) {
         if (e.art != SyncFehlerArt.vorhanden) rethrow;
@@ -289,6 +310,14 @@ class SyncNotifier extends Notifier<SyncStatus> {
         if (e.art == SyncFehlerArt.nichtGefunden && !passtLokal) {
           throw SyncFehler(SyncFehlerArt.nichtGefunden,
               'Dieser Recovery-Schlüssel gehört nicht zu diesem Gerät, und auf dem Server gibt es dazu kein Konto.');
+        }
+        if (e.art == SyncFehlerArt.nichtGefunden && !anlegen) {
+          throw SyncFehler(
+            SyncFehlerArt.einladung,
+            registrierung == 'zu'
+                ? 'Auf diesem Server lassen sich keine neuen Konten anlegen.'
+                : 'Für ein neues Konto auf diesem Server ist ein Einladungscode des Betreibers nötig.',
+          );
         }
         rethrow;
       }

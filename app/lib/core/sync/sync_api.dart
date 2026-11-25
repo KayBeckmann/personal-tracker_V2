@@ -28,6 +28,9 @@ enum SyncFehlerArt {
 
   /// Recht fehlt (z. B. Schreiben in einer Freigabe mit Leserecht).
   verboten,
+
+  /// Neues Konto nur mit Einladungscode des Betreibers (oder gar nicht).
+  einladung,
   server,
 }
 
@@ -154,13 +157,21 @@ class SyncApi {
     required String recoveryHuelle,
     required String schluesselPaket,
     required String geraetName,
+    String? einladung,
   }) async {
-    final j = await _anfrage('POST', '/v1/konten', body: {
-      'recoveryAuth': base64Url.encode(recoveryAnmeldung),
-      'recoveryHuelle': recoveryHuelle,
-      'schluesselPaket': schluesselPaket,
-      'geraetName': geraetName,
-    });
+    final Map<String, dynamic> j;
+    try {
+      j = await _anfrage('POST', '/v1/konten', body: {
+        'recoveryAuth': base64Url.encode(recoveryAnmeldung),
+        'recoveryHuelle': recoveryHuelle,
+        'schluesselPaket': schluesselPaket,
+        'geraetName': geraetName,
+        'einladung': ?einladung,
+      });
+    } on SyncFehler catch (e) {
+      if (e.art == SyncFehlerArt.verboten) throw SyncFehler(SyncFehlerArt.einladung, e.meldung);
+      rethrow;
+    }
     return (konto: j['konto'] as String, geraet: j['geraet'] as String, token: j['token'] as String);
   }
 

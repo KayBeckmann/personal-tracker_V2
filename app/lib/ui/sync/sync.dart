@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/krypto/recovery_schluessel.dart';
 import '../../core/sitzung.dart';
 import '../../core/sync/sync_api.dart';
+import '../../core/sync/hosting.dart';
 import '../../core/sync/sync_dienst.dart';
 import '../../core/sync/sync_krypto.dart';
 import '../bausteine.dart';
@@ -29,6 +30,8 @@ String syncKurztext(SyncStatus s, DateTime jetzt) {
   final l = s.letzter;
   return l == null ? 'Noch nicht abgeglichen' : 'Abgeglichen ${vorWieLanger(l, jetzt)}';
 }
+
+String _mib(int b) => (b / (1024 * 1024)).toStringAsFixed(b < 10 * 1024 * 1024 ? 1 : 0).replaceAll('.', ',');
 
 String _aenderungen(int n) => n == 1 ? '1 Änderung' : '$n Änderungen';
 
@@ -105,6 +108,19 @@ class SyncKarte extends ConsumerWidget {
             Padding(padding: const EdgeInsets.only(top: 4), child: Text(fehler, style: TextStyle(fontSize: 13, color: f.warnText))),
           const SizedBox(height: 6),
           Text('Automatisch bei geöffneter App: nach dem Entsperren, kurz nach Änderungen und alle 5 Minuten.', style: klein),
+          if (s.belegt != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              s.kontingent == null
+                  ? 'Speicher auf dem Server: ${_mib(s.belegt!)} MiB'
+                  : 'Speicher auf dem Server: ${_mib(s.belegt!)} von ${_mib(s.kontingent!)} MiB',
+              key: const Key('sync-speicher'),
+              style: TextStyle(
+                fontSize: 13,
+                color: s.kontingent != null && s.belegt! > s.kontingent! * 0.9 ? f.warnText : f.gedaempft,
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           Row(
             children: [
@@ -281,12 +297,21 @@ class _SyncAblaufState extends ConsumerState<SyncAblauf> {
   final _name = TextEditingController(text: standardGeraetName());
   final _pw1 = TextEditingController();
   final _pw2 = TextEditingController();
+  final _einladung = TextEditingController();
   bool _arbeitet = false;
   String? _fehler;
 
+  /// Gehostete Instanz gewählt (nur wenn eine eingebaut ist; vorausgewählt).
+  late bool _gehostet = ref.read(hostingProvider) != null;
+
+  /// Der Server nimmt neue Konten nur mit Einladungscode an.
+  bool _einladungNoetig = false;
+
+  String get _serverText => _gehostet ? ref.read(hostingProvider)!.url : _server.text;
+
   @override
   void dispose() {
-    for (final c in [_server, _geheim, _name, _pw1, _pw2]) {
+    for (final c in [_server, _geheim, _name, _pw1, _pw2, _einladung]) {
       c.dispose();
     }
     super.dispose();
@@ -303,10 +328,11 @@ class _SyncAblaufState extends ConsumerState<SyncAblauf> {
     try {
       final name = _name.text.trim().isEmpty ? standardGeraetName() : _name.text.trim();
       final bericht = await switch (weg) {
-        SyncWeg.verbinden => sync.verbinden(server: _server.text, recovery: recovery!, geraetName: name),
-        SyncWeg.koppeln => sync.koppeln(server: _server.text, code: code!, geraetName: name),
-        SyncWeg.neuKoppeln => sync.neuKoppeln(server: _server.text, code: code!, passwort: _pw1.text, geraetName: name),
-        SyncWeg.neuRecovery => sync.neuAusRecovery(server: _server.text, recovery: recovery!, passwort: _pw1.text, geraetName: name),
+        SyncWeg.verbinden => sync.verbinden(
+            server: _serverText, recovery: recovery!, geraetName: name, einladung: _einladungNoetig ? _einladung.text : null),
+        SyncWeg.koppeln => sync.koppeln(server: _serverText, code: code!, geraetName: name),
+        SyncWeg.neuKoppeln => sync.neuKoppeln(server: _serverText, code: code!, passwort: _pw1.text, geraetName: name),
+        SyncWeg.neuRecovery => sync.neuAusRecovery(server: _serverText, recovery: recovery!, passwort: _pw1.text, geraetName: name),
       };
       if (!mounted) return;
       final status = ref.read(syncProvider);
@@ -314,7 +340,12 @@ class _SyncAblaufState extends ConsumerState<SyncAblauf> {
           ? 'Verbunden und abgeglichen.'
           : 'Verbunden. Der erste Abgleich ist noch nicht durch (${status.fehler ?? 'unbekannt'}) und wird automatisch fortgesetzt.');
     } on SyncFehler catch (e) {
-      if (mounted) setState(() => _fehler = e.meldung);
+      if (mounted) {
+        setState(() {
+          _fehler = e.meldung;
+          if (e.art == SyncFehlerArt.einladung && e.meldung.contains('Einladungscode')) _einladungNoetig = true;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _fehler = 'Verbinden fehlgeschlagen: $e');
     } finally {
@@ -328,6 +359,7 @@ class _SyncAblaufState extends ConsumerState<SyncAblauf> {
     final f = context.farben;
     final s = ref.watch(sitzungProvider);
     final anzahl = s is Entsperrt ? s.bestand.anzahlDatensaetze : 0;
+    final hosting = ref.watch(hostingProvider);
     final (oberzeile, titel, unterzeile) = switch (weg) {
       SyncWeg.verbinden => (
           'Sync einrichten',
@@ -354,6 +386,33 @@ class _SyncAblaufState extends ConsumerState<SyncAblauf> {
         children: [
           Seitenkopf(oberzeile: oberzeile, titel: titel, unterzeile: unterzeile),
           const SizedBox(height: 22),
+          if (hosting != null) ...[
+            Text('Wo synchronisieren?', style: TextStyle(fontWeight: FontWeight.w600, color: f.text)),
+            RadioGroup<bool>(
+              groupValue: _gehostet,
+              onChanged: (v) => setState(() => _gehostet = v ?? false),
+              child: Column(
+                children: [
+                  RadioListTile<bool>(
+                    key: const Key('sync-hosting'),
+                    value: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(hosting.name),
+                    subtitle: Text('${Uri.tryParse(hosting.url)?.host ?? hosting.url} · ${hosting.hinweis}'),
+                  ),
+                  RadioListTile<bool>(
+                    key: const Key('sync-eigener'),
+                    value: false,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Eigener Server'),
+                    subtitle: const Text('Selbst betrieben oder von jemandem, dem du vertraust'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (!_gehostet) ...[
           TextFormField(
             key: const Key('sync-server'),
             controller: _server,
@@ -370,6 +429,7 @@ class _SyncAblaufState extends ConsumerState<SyncAblauf> {
             },
           ),
           const SizedBox(height: 12),
+          ],
           TextFormField(
             key: const Key('sync-geheim'),
             controller: _geheim,
@@ -390,6 +450,22 @@ class _SyncAblaufState extends ConsumerState<SyncAblauf> {
             controller: _name,
             decoration: const InputDecoration(labelText: 'Name dieses Geräts', helperText: 'Nur für deine Geräteliste; verschlüsselt gespeichert.'),
           ),
+          if (_einladungNoetig) ...[
+            const SizedBox(height: 12),
+            TextFormField(
+              key: const Key('sync-einladung'),
+              controller: _einladung,
+              autocorrect: false,
+              enableSuggestions: false,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                labelText: 'Einladungscode',
+                hintText: 'XXXXX-XXXXX-XXXXX-XXXXX',
+                helperText: 'Vom Betreiber des Servers; nur für ein neues Konto nötig.',
+              ),
+              validator: (v) => (v ?? '').trim().isEmpty ? 'Bitte den Einladungscode eingeben.' : null,
+            ),
+          ],
           if (weg.neu) ...[
             const SizedBox(height: 12),
             PasswortFeld(key: const Key('sync-pw1'), controller: _pw1, label: 'Neues App-Passwort für dieses Gerät', validator: passwortRegel),

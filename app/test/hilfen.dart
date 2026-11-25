@@ -11,6 +11,7 @@ import 'package:personal_tracker/core/krypto/schluesselbund.dart';
 import 'package:personal_tracker/core/modell/bestand.dart';
 import 'package:personal_tracker/core/sitzung.dart';
 import 'package:personal_tracker/core/speicher/ablage.dart';
+import 'package:personal_tracker/core/sync/hosting.dart';
 import 'package:personal_tracker/core/sync/sync_dienst.dart';
 import 'package:personal_tracker/ui/dateien.dart';
 import 'package:sembast/sembast_memory.dart';
@@ -76,7 +77,10 @@ class FakeStandort implements Standort {
 
 /// Simuliert eine Installation: gleiche Fabrik + Name = gleiches Gerät.
 class TestGeraet {
-  TestGeraet({DatabaseFactory? fabrik, this.name = 'test.db', this.client}) : fabrik = fabrik ?? newDatabaseFactoryMemory();
+  TestGeraet({DatabaseFactory? fabrik, this.name = 'test.db', this.client, this.hosting}) : fabrik = fabrik ?? newDatabaseFactoryMemory();
+
+  /// Eingebaute gehostete Instanz (wie per `--dart-define=PT_HOSTED_URL`).
+  final Hosting? hosting;
 
   final DatabaseFactory fabrik;
   final String name;
@@ -110,5 +114,6 @@ class TestGeraet {
         // Automatischer Abgleich aus: Tests gleichen ausdrücklich ab.
         syncTaktProvider.overrideWithValue((nachAenderung: Duration.zero, regelmaessig: Duration.zero)),
         if (client != null) httpClientProvider.overrideWithValue(client!),
+        hostingProvider.overrideWithValue(hosting),
       ];
 }
