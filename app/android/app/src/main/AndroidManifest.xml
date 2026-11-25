@@ -8,6 +8,9 @@
     <!-- Nur für den freiwilligen Sync mit dem eigenen Server (M3). Ohne
          Verbindung stellt die App keine Netzanfragen. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Nur auf Knopfdruck: Filiale merken bzw. nächste Filiale finden (Einkauf). -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <!-- allowBackup aus: der Schlüssel im Keystore lässt sich nicht mitsichern;
          Sicherungen laufen bewusst über die verschlüsselte Backup-Datei. -->
     <application
