@@ -14,7 +14,8 @@ import 'package:sqlite3/sqlite3.dart';
 ///
 /// - 1: Konten, Geräte, Objekte, Kopplungen (M3)
 /// - 2: Blöcke für Dateiinhalte des Vault-Syncs (M4)
-const dbSchema = 2;
+/// - 3: geteilte Räume mit Mitgliedern, Einladungen, Objekten und Blöcken (M5)
+const dbSchema = 3;
 
 final _zufall = Random.secure();
 
@@ -36,6 +37,28 @@ class SpeicherFehler implements Exception {
 }
 
 typedef Geraet = ({String id, String konto});
+
+/// Wo Objekte und Blöcke liegen: im Konto selbst oder in einem Raum.
+class Ort {
+  const Ort.konto(this.id)
+      : objekte = 'objekte',
+        bloecke = 'bloecke',
+        spalte = 'konto',
+        stand = 'konten';
+  const Ort.raum(this.id)
+      : objekte = 'raum_objekte',
+        bloecke = 'raum_bloecke',
+        spalte = 'raum',
+        stand = 'raeume';
+
+  final String id;
+  final String objekte;
+  final String bloecke;
+  final String spalte;
+
+  /// Tabelle mit der laufenden Revision (`seq`).
+  final String stand;
+}
 
 /// Ergebnis einer einzelnen Änderung beim Hochladen.
 typedef Ergebnis = ({String id, bool ok, int seq, String? daten});
@@ -129,6 +152,48 @@ class Speicher {
         daten BLOB NOT NULL,
         erstellt INTEGER NOT NULL,
         PRIMARY KEY (konto, id)
+      );
+    '''),
+    2: (db) => db.execute('''
+      CREATE TABLE raeume (
+        id TEXT PRIMARY KEY,
+        eigentuemer TEXT NOT NULL REFERENCES konten(id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL DEFAULT 0,
+        erstellt INTEGER NOT NULL
+      );
+      CREATE TABLE raum_mitglieder (
+        raum TEXT NOT NULL REFERENCES raeume(id) ON DELETE CASCADE,
+        konto TEXT NOT NULL REFERENCES konten(id) ON DELETE CASCADE,
+        recht TEXT NOT NULL,
+        paket TEXT NOT NULL,
+        antwort TEXT NOT NULL,
+        beigetreten INTEGER NOT NULL,
+        PRIMARY KEY (raum, konto)
+      );
+      CREATE INDEX raum_mitglieder_konto ON raum_mitglieder (konto);
+      CREATE TABLE raum_einladungen (
+        slot TEXT PRIMARY KEY,
+        raum TEXT NOT NULL REFERENCES raeume(id) ON DELETE CASCADE,
+        recht TEXT NOT NULL,
+        paket TEXT NOT NULL,
+        mitglied_paket TEXT NOT NULL,
+        ablauf INTEGER NOT NULL
+      );
+      CREATE TABLE raum_objekte (
+        raum TEXT NOT NULL REFERENCES raeume(id) ON DELETE CASCADE,
+        id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        aenderung TEXT NOT NULL,
+        daten TEXT NOT NULL,
+        PRIMARY KEY (raum, id)
+      );
+      CREATE INDEX raum_objekte_seq ON raum_objekte (raum, seq);
+      CREATE TABLE raum_bloecke (
+        raum TEXT NOT NULL REFERENCES raeume(id) ON DELETE CASCADE,
+        id TEXT NOT NULL,
+        daten BLOB NOT NULL,
+        erstellt INTEGER NOT NULL,
+        PRIMARY KEY (raum, id)
       );
     '''),
   };
@@ -282,36 +347,40 @@ class Speicher {
   void _kopplungenAufraeumen() => db.execute('DELETE FROM kopplungen WHERE ablauf < ?', [_jetzt]);
 
   // -------------------------------------------------------------------
-  // Objekte
+  // Objekte und Blöcke – im eigenen Konto oder in einem geteilten Raum
+  //
+  // Die Clients verschlüsseln Dateien in Blöcken; die Block-ID ist ein
+  // HMAC über den Inhalt unter einem Kontoschlüssel (bzw. Raumschlüssel).
+  // Welche Datei welche Blöcke nutzt, steht nur in den verschlüsselten
+  // Objekten.
 
   /// Objekte mit `seq > seit`, aufsteigend; [bis] ist der Stand, ab dem der
   /// nächste Abruf weitermacht.
-  ({List<Map<String, Object?>> objekte, int bis, bool mehr}) abrufen(String konto, int seit, int max) {
+  ({List<Map<String, Object?>> objekte, int bis, bool mehr}) abrufen(Ort o, int seit, int max) {
     final rows = db.select(
-      'SELECT id, seq, daten FROM objekte WHERE konto = ? AND seq > ? ORDER BY seq LIMIT ?',
-      [konto, seit, max + 1],
+      'SELECT id, seq, daten FROM ${o.objekte} WHERE ${o.spalte} = ? AND seq > ? ORDER BY seq LIMIT ?',
+      [o.id, seit, max + 1],
     );
     final mehr = rows.length > max;
     final liste = [for (final r in rows.take(max)) {'id': r['id'], 'seq': r['seq'], 'daten': r['daten']}];
-    final bis = liste.isNotEmpty
-        ? liste.last['seq'] as int
-        : db.select('SELECT seq FROM konten WHERE id = ?', [konto]).first['seq'] as int;
-    // Ohne neue Objekte ist [bis] der Kontostand. Liegt er unter [seit],
-    // wurde der Server zurückgesetzt (z. B. aus einer älteren Sicherung).
+    final bis = liste.isNotEmpty ? liste.last['seq'] as int : _seq(o);
+    // Ohne neue Objekte ist [bis] der Stand. Liegt er unter [seit], wurde
+    // der Server zurückgesetzt (z. B. aus einer älteren Sicherung).
     return (objekte: liste, bis: bis, mehr: mehr);
   }
+
+  int _seq(Ort o) => db.select('SELECT seq FROM ${o.stand} WHERE id = ?', [o.id]).first['seq'] as int;
 
   /// Schreibt Änderungen in einer Transaktion. Je Objekt gilt: passt die
   /// [basis] des Clients zur Serverrevision (oder ist das Objekt neu),
   /// wird geschrieben; sonst gibt es einen Konflikt mit der Serverfassung.
   /// Dieselbe Änderungs-ID zweimal (Wiederholung nach Abbruch) ist kein
   /// Konflikt, sondern liefert das frühere Ergebnis.
-  List<Ergebnis> schreiben(String konto, List<({String id, int basis, String aenderung, String daten})> aenderungen) =>
-      transaktion(() {
-        var seq = db.select('SELECT seq FROM konten WHERE id = ?', [konto]).first['seq'] as int;
+  List<Ergebnis> schreiben(Ort o, List<({String id, int basis, String aenderung, String daten})> aenderungen) => transaktion(() {
+        var seq = _seq(o);
         final ergebnisse = <Ergebnis>[];
         for (final a in aenderungen) {
-          final cur = db.select('SELECT seq, aenderung, daten FROM objekte WHERE konto = ? AND id = ?', [konto, a.id]).firstOrNull;
+          final cur = db.select('SELECT seq, aenderung, daten FROM ${o.objekte} WHERE ${o.spalte} = ? AND id = ?', [o.id, a.id]).firstOrNull;
           if (cur != null && cur['aenderung'] == a.aenderung) {
             ergebnisse.add((id: a.id, ok: true, seq: cur['seq'] as int, daten: null));
             continue;
@@ -322,48 +391,46 @@ class Speicher {
           }
           seq++;
           db.execute(
-            'INSERT OR REPLACE INTO objekte (konto, id, seq, aenderung, daten) VALUES (?, ?, ?, ?, ?)',
-            [konto, a.id, seq, a.aenderung, a.daten],
+            'INSERT OR REPLACE INTO ${o.objekte} (${o.spalte}, id, seq, aenderung, daten) VALUES (?, ?, ?, ?, ?)',
+            [o.id, a.id, seq, a.aenderung, a.daten],
           );
           ergebnisse.add((id: a.id, ok: true, seq: seq, daten: null));
         }
-        db.execute('UPDATE konten SET seq = ? WHERE id = ?', [seq, konto]);
+        db.execute('UPDATE ${o.stand} SET seq = ? WHERE id = ?', [seq, o.id]);
         return ergebnisse;
       });
 
-  // -------------------------------------------------------------------
-  // Blöcke (Dateiinhalte des Vault-Syncs)
-  //
-  // Die Clients verschlüsseln Dateien in Blöcken; die Block-ID ist ein
-  // HMAC über den Inhalt unter einem Kontoschlüssel. Welche Datei welche
-  // Blöcke nutzt, steht nur in den verschlüsselten Objekten.
-
-  /// Belegter Platz eines Kontos (Objekte und Blöcke) in Byte.
-  int belegt(String konto) =>
-      (db.select('SELECT coalesce(sum(length(daten)), 0) b FROM objekte WHERE konto = ?', [konto]).first['b'] as int) +
-      (db.select('SELECT coalesce(sum(length(daten)), 0) b FROM bloecke WHERE konto = ?', [konto]).first['b'] as int);
+  /// Belegter Platz eines Kontos in Byte: eigene Objekte und Blöcke sowie
+  /// alles in Räumen, die ihm gehören.
+  int belegt(String konto) {
+    int summe(String sql) => db.select(sql, [konto]).first['b'] as int;
+    return summe('SELECT coalesce(sum(length(daten)), 0) b FROM objekte WHERE konto = ?') +
+        summe('SELECT coalesce(sum(length(daten)), 0) b FROM bloecke WHERE konto = ?') +
+        summe('SELECT coalesce(sum(length(o.daten)), 0) b FROM raum_objekte o JOIN raeume r ON r.id = o.raum WHERE r.eigentuemer = ?') +
+        summe('SELECT coalesce(sum(length(o.daten)), 0) b FROM raum_bloecke o JOIN raeume r ON r.id = o.raum WHERE r.eigentuemer = ?');
+  }
 
   /// Speichert einen Block; gibt es ihn schon, bleibt er unverändert.
-  /// [maxKonto] > 0 begrenzt den Platz je Konto.
-  void blockSchreiben(String konto, String id, Uint8List daten, {int maxKonto = 0}) => transaktion(() {
-        if (db.select('SELECT 1 FROM bloecke WHERE konto = ? AND id = ?', [konto, id]).isNotEmpty) return;
-        if (maxKonto > 0 && belegt(konto) + daten.length > maxKonto) {
+  /// [maxKonto] > 0 begrenzt den Platz von [zahler].
+  void blockSchreiben(Ort o, String id, Uint8List daten, {int maxKonto = 0, String? zahler}) => transaktion(() {
+        if (db.select('SELECT 1 FROM ${o.bloecke} WHERE ${o.spalte} = ? AND id = ?', [o.id, id]).isNotEmpty) return;
+        if (maxKonto > 0 && zahler != null && belegt(zahler) + daten.length > maxKonto) {
           throw SpeicherFehler('Der Speicherplatz dieses Kontos ist aufgebraucht.');
         }
-        db.execute('INSERT INTO bloecke (konto, id, daten, erstellt) VALUES (?, ?, ?, ?)', [konto, id, daten, _jetzt]);
+        db.execute('INSERT INTO ${o.bloecke} (${o.spalte}, id, daten, erstellt) VALUES (?, ?, ?, ?)', [o.id, id, daten, _jetzt]);
       });
 
-  Uint8List? blockLesen(String konto, String id) =>
-      db.select('SELECT daten FROM bloecke WHERE konto = ? AND id = ?', [konto, id]).firstOrNull?['daten'] as Uint8List?;
+  Uint8List? blockLesen(Ort o, String id) =>
+      db.select('SELECT daten FROM ${o.bloecke} WHERE ${o.spalte} = ? AND id = ?', [o.id, id]).firstOrNull?['daten'] as Uint8List?;
 
   /// Welche der [ids] fehlen.
-  List<String> bloeckeFehlend(String konto, List<String> ids) {
+  List<String> bloeckeFehlend(Ort o, List<String> ids) {
     final da = <String>{};
     for (var i = 0; i < ids.length; i += 500) {
       final teil = ids.sublist(i, i + 500 > ids.length ? ids.length : i + 500);
       final rows = db.select(
-        'SELECT id FROM bloecke WHERE konto = ? AND id IN (${List.filled(teil.length, '?').join(',')})',
-        [konto, ...teil],
+        'SELECT id FROM ${o.bloecke} WHERE ${o.spalte} = ? AND id IN (${List.filled(teil.length, '?').join(',')})',
+        [o.id, ...teil],
       );
       da.addAll(rows.map((r) => r['id'] as String));
     }
@@ -374,17 +441,104 @@ class Speicher {
   /// Clients wissen das; sie nennen alle noch benutzten Blöcke. Jüngere
   /// Blöcke als [schonfrist] bleiben, weil ein anderes Gerät sie gerade
   /// hochladen könnte, bevor sein Objekt beim Server ist.
-  int bloeckeAufraeumen(String konto, Set<String> behalten, {Duration schonfrist = const Duration(hours: 24)}) => transaktion(() {
+  int bloeckeAufraeumen(Ort o, Set<String> behalten, {Duration schonfrist = const Duration(hours: 24)}) => transaktion(() {
         final grenze = _jetzt - schonfrist.inMilliseconds;
         final alt = [
-          for (final r in db.select('SELECT id FROM bloecke WHERE konto = ? AND erstellt < ?', [konto, grenze]))
+          for (final r in db.select('SELECT id FROM ${o.bloecke} WHERE ${o.spalte} = ? AND erstellt < ?', [o.id, grenze]))
             if (!behalten.contains(r['id'])) r['id'] as String,
         ];
         for (final id in alt) {
-          db.execute('DELETE FROM bloecke WHERE konto = ? AND id = ?', [konto, id]);
+          db.execute('DELETE FROM ${o.bloecke} WHERE ${o.spalte} = ? AND id = ?', [o.id, id]);
         }
         return alt.length;
       });
+
+  // -------------------------------------------------------------------
+  // Geteilte Räume (M5)
+  //
+  // Ein Raum ist ein eigener Objektbereich (Vault-Ordner, Kalender oder
+  // Aufgabenliste) mit Eigentümer und Mitgliedern. Der Server kennt nur
+  // IDs und Rechte; Name, Art und Inhalte sind mit dem Raumschlüssel
+  // verschlüsselt, den die Clients untereinander verteilen ([paket] je
+  // Mitglied, nur für dieses Mitglied lesbar).
+
+  static const rechte = {'lesen', 'schreiben'};
+
+  void raumAnlegen(String konto, String id) => transaktion(() {
+        if (db.select('SELECT 1 FROM raeume WHERE id = ?', [id]).isNotEmpty) throw SpeicherFehler('Raum gibt es schon.');
+        db.execute('INSERT INTO raeume (id, eigentuemer, seq, erstellt) VALUES (?, ?, 0, ?)', [id, konto, _jetzt]);
+      });
+
+  /// Recht von [konto] in [raum]: `eigentuemer`, `schreiben`, `lesen` oder `null`.
+  String? recht(String konto, String raum) {
+    final r = db.select('SELECT eigentuemer FROM raeume WHERE id = ?', [raum]).firstOrNull;
+    if (r == null) return null;
+    if (r['eigentuemer'] == konto) return 'eigentuemer';
+    return db.select('SELECT recht FROM raum_mitglieder WHERE raum = ? AND konto = ?', [raum, konto]).firstOrNull?['recht'] as String?;
+  }
+
+  /// Räume, in denen [konto] Eigentümer oder Mitglied ist.
+  List<Map<String, Object?>> raeume(String konto) => [
+        for (final r in db.select('SELECT id, seq FROM raeume WHERE eigentuemer = ? ORDER BY erstellt', [konto]))
+          {
+            'id': r['id'],
+            'recht': 'eigentuemer',
+            'seq': r['seq'],
+            'mitglieder': [
+              for (final m in db.select('SELECT konto, recht, antwort FROM raum_mitglieder WHERE raum = ? ORDER BY beigetreten', [r['id']]))
+                {'konto': m['konto'], 'recht': m['recht'], 'antwort': m['antwort']},
+            ],
+            'einladungen': db.select('SELECT count(*) n FROM raum_einladungen WHERE raum = ? AND ablauf >= ?', [r['id'], _jetzt]).first['n'],
+          },
+        for (final r in db.select(
+          'SELECT r.id, r.seq, m.recht, m.paket FROM raum_mitglieder m JOIN raeume r ON r.id = m.raum WHERE m.konto = ? ORDER BY m.beigetreten',
+          [konto],
+        ))
+          {'id': r['id'], 'recht': r['recht'], 'seq': r['seq'], 'paket': r['paket']},
+      ];
+
+  void raumLoeschen(String raum) => db.execute('DELETE FROM raeume WHERE id = ?', [raum]);
+
+  void einladungAnlegen(String raum, String slot, {required String recht, required String paket, required String mitgliedPaket, required Duration gueltig}) =>
+      transaktion(() {
+        db.execute('DELETE FROM raum_einladungen WHERE ablauf < ?', [_jetzt]);
+        final n = db.select('SELECT count(*) n FROM raum_einladungen WHERE raum = ?', [raum]).first['n'] as int;
+        if (n >= kopplungenProKonto) throw SpeicherFehler('Zu viele offene Einladungen. Bitte etwas warten.');
+        db.execute(
+          'INSERT OR REPLACE INTO raum_einladungen (slot, raum, recht, paket, mitglied_paket, ablauf) VALUES (?, ?, ?, ?, ?, ?)',
+          [slot, raum, recht, paket, mitgliedPaket, _jetzt + gueltig.inMilliseconds],
+        );
+      });
+
+  /// Nimmt eine Einladung genau einmal an: [konto] wird Mitglied. `null`,
+  /// wenn es sie nicht (mehr) gibt. Wirft, wenn [konto] schon dazugehört.
+  ({String raum, String recht, String paket})? einladungAnnehmen(String slot, String konto, String antwort) => transaktion(() {
+        db.execute('DELETE FROM raum_einladungen WHERE ablauf < ?', [_jetzt]);
+        final e = db.select('SELECT raum, recht, paket, mitglied_paket FROM raum_einladungen WHERE slot = ?', [slot]).firstOrNull;
+        if (e == null) return null;
+        final raum = e['raum'] as String;
+        if (recht(konto, raum) != null) throw SpeicherFehler('Du gehörst schon zu dieser Freigabe.');
+        db.execute('DELETE FROM raum_einladungen WHERE slot = ?', [slot]);
+        db.execute(
+          'INSERT INTO raum_mitglieder (raum, konto, recht, paket, antwort, beigetreten) VALUES (?, ?, ?, ?, ?, ?)',
+          [raum, konto, e['recht'], e['mitglied_paket'], antwort, _jetzt],
+        );
+        return (raum: raum, recht: e['recht'] as String, paket: e['paket'] as String);
+      });
+
+  /// Recht und/oder Schlüsselpaket eines Mitglieds ändern (Eigentümer).
+  bool mitgliedAendern(String raum, String konto, {String? recht, String? paket}) {
+    db.execute(
+      'UPDATE raum_mitglieder SET recht = coalesce(?, recht), paket = coalesce(?, paket) WHERE raum = ? AND konto = ?',
+      [recht, paket, raum, konto],
+    );
+    return db.updatedRows > 0;
+  }
+
+  bool mitgliedEntfernen(String raum, String konto) {
+    db.execute('DELETE FROM raum_mitglieder WHERE raum = ? AND konto = ?', [raum, konto]);
+    return db.updatedRows > 0;
+  }
 
   static String _iso(int ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).toIso8601String();
 
