@@ -16,6 +16,7 @@ import 'modell/datum.dart';
 import 'modell/finanzen.dart';
 import 'modell/notiz.dart';
 import 'modell/termin.dart';
+import 'raeume/raum.dart';
 import 'speicher/ablage.dart';
 import 'speicher/backup.dart';
 import 'speicher/rohdaten.dart';
@@ -278,6 +279,15 @@ class SitzungNotifier extends Notifier<Sitzung> {
   Future<void> _aendern(List<(String, String, Map<String, dynamic>?)> datensaetze, Bestand Function(Bestand) neu) =>
       sperre.exklusiv(() async {
         final s = _offen;
+        // Geteilte Einträge mit Leserecht bleiben unverändert (die
+        // Oberfläche bietet das gar nicht erst an).
+        for (final (bereich, id, json) in datensaetze) {
+          if (bereich != 'termine' && bereich != 'aufgaben') continue;
+          final vorher = bereich == 'termine' ? s.bestand.termine[id]?.raum : s.bestand.aufgaben[id]?.raum;
+          for (final r in [vorher, json?['raum'] as String?]) {
+            if (r != null && s.bestand.raeume[r]?.schreibbar == false) throw StateError('Dieser Eintrag ist nur lesbar.');
+          }
+        }
         final bestand = neu(s.bestand);
         final stand = _syncAktiv ? SyncStand(_ablage, s.dek) : null;
         Future<void> alle(DatabaseClient? tx) async {
@@ -426,6 +436,9 @@ class SitzungNotifier extends Notifier<Sitzung> {
   Future<void> geplantBuchen(Buchung b, {DateTime? datum}) => speichereBuchung(
         b.kopie(status: BuchungsStatus.gebucht, ausPlanung: !b.istUmbuchung, datum: datum),
       );
+
+  /// Raumdaten (Schlüssel, Mitglieder, Ordner) speichern.
+  Future<void> raumSpeichern(Raum r) => _schreiben('raeume', r.id, r.toJson(), (b) => b.kopie(raeume: {...b.raeume, r.id: r}));
 
   Future<void> speichereEinstellungen(Einstellungen e) async {
     await _schreiben('einstellungen', 'app', e.toJson(), (b) => b.kopie(einstellungen: e));

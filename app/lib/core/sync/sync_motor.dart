@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:sembast/sembast.dart';
 import 'package:uuid/uuid.dart';
 
+import '../raeume/raum.dart';
 import '../speicher/ablage.dart';
 import '../speicher/schema.dart';
 import '../vault/secrets.dart';
@@ -30,7 +31,7 @@ class SyncBericht {
   bool neuAufgebaut = false;
 
   /// Lokale Daten haben sich durch den Abgleich geändert.
-  bool get lokalGeaendert => geholt > 0 || konflikte > 0;
+  bool get lokalGeaendert => geholt > 0 || konflikte > 0 || raeumeEntfernt.isNotEmpty || raeumeGeaendert;
 
   /// Antwort von `GET /v1/konto` (Recovery-Paket, Geräte).
   Map<String, dynamic>? konto;
@@ -43,6 +44,18 @@ class SyncBericht {
 
   /// Vom Server aufgeräumte, nicht mehr benutzte Blöcke.
   int bloeckeAufgeraeumt = 0;
+
+  /// Räume, zu denen kein Zugang mehr besteht (Name).
+  final raeumeEntfernt = <String>[];
+
+  /// Neue Mitglieder in eigenen Räumen („Name (Raum)“).
+  final neueMitglieder = <String>[];
+
+  /// Raumdaten (Schlüssel, Rechte, Mitglieder) haben sich geändert.
+  bool raeumeGeaendert = false;
+
+  /// Änderungen in Räumen mit Leserecht, die nicht gesendet wurden.
+  int nurLesen = 0;
 }
 
 /// Abgleich mit dem Server. Ablauf: alles Neue holen und in einer
@@ -94,6 +107,10 @@ class SyncMotor {
     final b = SyncBericht();
     for (var runde = 0; runde < 4; runde++) {
       await _holen(b);
+      await _raeumeAbgleichen(b);
+      for (final r in await _raeume()) {
+        await _holen(b, raum: r);
+      }
       if (!await _senden(b)) break;
     }
     b.konto = await api.konto();
@@ -101,61 +118,173 @@ class SyncMotor {
     return b;
   }
 
+  Future<List<Raum>> _raeume({DatabaseClient? tx}) async => [for (final j in await ablage.lesen(dek, 'raeume', tx: tx)) Raum.fromJson(j)];
+
+  /// Wo ein Datensatz hingehört: `null` = eigenes Konto, sonst Raum-ID.
+  /// Termine und Aufgaben tragen ihren Raum; Vault-Dateien liegen in
+  /// einem Raum, wenn ihr Pfad unter dessen Ordner liegt.
+  static String? zielVon(String bereich, Map<String, dynamic>? daten, Iterable<Raum> raeume) {
+    if (daten == null) return null;
+    if (bereich == 'termine' || bereich == 'aufgaben') return daten['raum'] as String?;
+    if (bereich == vaultBereich) return raumFuerPfad(daten['pfad'] as String, raeume)?.id;
+    return null;
+  }
+
+  static String freigabeSchluessel(String id, String? raum) => raum == null ? id : '$id@$raum';
+
+  /// Der Vault-Raum, unter dessen Ordner [pfad] liegt.
+  static Raum? raumFuerPfad(String pfad, Iterable<Raum> raeume) {
+    for (final r in raeume) {
+      final o = r.ordner;
+      if (r.art == RaumArt.vault && o != null && pfad.startsWith('$o/')) return r;
+    }
+    return null;
+  }
+
   // ---------------------------------------------------------------------
   // Holen
 
-  Future<void> _holen(SyncBericht bericht) async {
-    var v = (await stand.verbindung())!;
+  /// Holt alles Neue aus dem Konto oder aus [raum] und spielt es ein.
+  Future<void> _holen(SyncBericht bericht, {Raum? raum}) async {
+    final v = (await stand.verbindung())!;
+    final staende = await stand.raumStaende();
+    final start = raum == null ? (seq: v.seq, bekannt: v.bekannt) : (seq: staende[raum.id]?.seq ?? 0, bekannt: staende[raum.id]?.bekannt ?? 0);
     final objekte = <({String id, int seq, String daten})>[];
-    var seit = v.seq;
+    var seit = start.seq;
     while (true) {
-      final r = await api.abrufen(seit, max: seite);
-      if (r.objekte.isEmpty && objekte.isEmpty && r.bis < (seit > v.bekannt ? seit : v.bekannt)) {
-        await _neuAufbauen(bericht);
-        return _holen(bericht);
+      final r = await api.abrufen(seit, max: seite, raum: raum?.id);
+      if (r.objekte.isEmpty && objekte.isEmpty && r.bis < (seit > start.bekannt ? seit : start.bekannt)) {
+        await _neuAufbauen(bericht, raum);
+        return _holen(bericht, raum: raum);
       }
       objekte.addAll(r.objekte);
       seit = r.bis;
       if (!r.mehr) break;
     }
 
+    if (raum != null) {
+      // Zurückgestellte Objekte dieses Raums noch einmal versuchen.
+      for (final z in (await stand.zurueckgestellt()).values) {
+        if (z.raum == raum.id && !objekte.any((o) => o.id == z.id && o.seq >= z.seq)) objekte.add((id: z.id, seq: z.seq, daten: z.daten));
+      }
+      objekte.sort((a, b) => a.seq.compareTo(b.seq));
+    }
+
     // Entschlüsseln außerhalb der Sperre.
-    final umschlaege = <({int seq, Umschlag u})>[];
+    final erlaubt = raum == null
+        ? {...Ablage.bereiche, vaultBereich}
+        : {'raum', switch (raum.art) { RaumArt.kalender => 'termine', RaumArt.aufgaben => 'aufgaben', RaumArt.vault => vaultBereich }};
+    final umschlaege = <({int seq, Umschlag u, String oid, String daten})>[];
     for (final o in objekte) {
-      final u = v.schluessel.entschluesseln(o.id, o.daten);
+      final u = raum == null ? v.schluessel.entschluesseln(o.id, o.daten) : raum.entschluesseln(o.id, o.daten);
       if (u == null) {
         bericht.defekt++;
         continue;
       }
-      if (u.schema > aktuellesSchema || !(Ablage.bereiche.contains(u.bereich) || u.bereich == vaultBereich)) {
+      if (u.schema > aktuellesSchema || (raum == null && !erlaubt.contains(u.bereich))) {
         throw SyncFehler(SyncFehlerArt.version, 'Ein anderes Gerät nutzt eine neuere App-Version. Bitte diese App aktualisieren.');
       }
-      umschlaege.add((seq: o.seq, u: u));
+      if (!erlaubt.contains(u.bereich)) {
+        bericht.defekt++;
+        continue;
+      }
+      umschlaege.add((seq: o.seq, u: u, oid: o.id, daten: o.daten));
     }
 
     await sperre.exklusiv(() => ablage.transaktion((tx) async {
           final basis = await stand.basis(tx: tx);
           final ausgang = await stand.ausgang(tx: tx);
+          final orte = await stand.orte(tx: tx);
+          final zurueck = await stand.zurueckgestellt(tx: tx);
           final geloeschteKonten = <String, Map<String, dynamic>>{};
           _vaultIndex = null;
           final vBasis = await vault.basis(tx: tx);
           final v0 = (await stand.verbindung(tx: tx))!;
-          for (final (:seq, :u) in umschlaege) {
+          var aktuellerRaum = raum;
+          for (final (:seq, :u, :oid, :daten) in umschlaege) {
+            if (u.bereich == 'raum') {
+              // Raum-Info des Eigentümers: Name und Mitglieder.
+              if (raum != null && !raum.eigen && u.daten != null) aktuellerRaum = await _infoUebernehmen(raum.id, u.daten!, tx);
+              continue;
+            }
             final k = SyncStand.schluessel(u.bereich, u.id);
-            if ((basis[k] ?? 0) >= seq) continue;
-            if (u.bereich == vaultBereich) {
-              await _vaultEinspielen(u, ausgang, vBasis, v0.name, tx, bericht);
+            if (raum != null && zurueck[k]?.raum == raum.id && zurueck[k]!.seq <= seq) zurueck.remove(k);
+            if (orte[k] != raum?.id) {
+              // Liegt (für uns) woanders: ein Löschvermerk hier betrifft uns
+              // nicht mehr; eine Fassung hier heißt, er ist hierher gewandert.
+              if (u.daten == null) continue;
+              // Ein Raum darf nichts übernehmen, was hier noch woanders liegt
+              // (sonst könnte ein Mitglied einen wieder privaten Eintrag
+              // zurückholen). Eigene Verschiebungen löschen zuerst am alten
+              // Ort; danach kommt das zurückgestellte Objekt an die Reihe.
+              if (raum != null && (ausgang.containsKey(k) || await ablage.lesenEinzeln(dek, u.bereich, u.id, tx: tx) != null)) {
+                zurueck[k] = (raum: raum.id, seq: seq, id: oid, daten: daten);
+                continue;
+              }
+              if (raum == null) {
+                orte.remove(k);
+              } else {
+                orte[k] = raum.id;
+              }
+              basis.remove(k);
+            } else if ((basis[k] ?? 0) >= seq) {
+              continue;
+            }
+            var w = u;
+            if (raum != null && u.daten != null) w = _ausRaum(u, aktuellerRaum!);
+            if (w.bereich == vaultBereich) {
+              await _vaultEinspielen(w, ausgang, vBasis, v0.name, tx, bericht);
             } else {
-              await _einspielen(u, ausgang.containsKey(k), tx, bericht, geloeschteKonten);
+              await _einspielen(w, ausgang.containsKey(k), tx, bericht, geloeschteKonten);
             }
             basis[k] = seq;
           }
           await _kontenSichern(geloeschteKonten, tx);
           await vault.setzeBasis(vBasis, tx: tx);
           await stand.setzeBasis(basis, tx: tx);
-          v = (await stand.verbindung(tx: tx))!;
-          await stand.setzeVerbindung(v.mit(seq: seit, bekannt: seit > v.bekannt ? seit : v.bekannt), tx: tx);
+          await stand.setzeOrte(orte, tx: tx);
+          await stand.setzeZurueckgestellt(zurueck, tx: tx);
+          if (raum == null) {
+            final jetzt = (await stand.verbindung(tx: tx))!;
+            await stand.setzeVerbindung(jetzt.mit(seq: seit, bekannt: seit > jetzt.bekannt ? seit : jetzt.bekannt), tx: tx);
+          } else {
+            final st = await stand.raumStaende(tx: tx);
+            final alt = st[raum.id];
+            final bekannt = alt == null || seit > alt.bekannt ? seit : alt.bekannt;
+            st[raum.id] = (seq: seit, bekannt: bekannt, info: alt?.info ?? 0);
+            await stand.setzeRaumStaende(st, tx: tx);
+          }
         }));
+  }
+
+  /// Daten aus einem Raum in die lokale Form: Termine und Aufgaben
+  /// bekommen den Raum, Vault-Pfade den Ordner, unter dem er hier hängt.
+  static Umschlag _ausRaum(Umschlag u, Raum raum) {
+    final d = {...u.daten!};
+    if (u.bereich == vaultBereich) {
+      d['pfad'] = '${raum.ordner}/${vaultPfad(d['pfad'] as String)}';
+      d['blockOrt'] = raum.id;
+    } else {
+      d['raum'] = raum.id;
+    }
+    return Umschlag(bereich: u.bereich, id: u.id, schema: u.schema, daten: d);
+  }
+
+  Future<Raum> _infoUebernehmen(String id, Map<String, dynamic> info, DatabaseClient tx) async {
+    final j = await ablage.lesenEinzeln(dek, 'raeume', id, tx: tx);
+    final r = Raum.fromJson(j!);
+    final neu = r.kopie(
+      name: info['name'] as String?,
+      von: info['von'] as String?,
+      mitgliederNamen: [
+        for (final m in ((info['mitglieder'] as List?) ?? const []).cast<Map<String, dynamic>>()) (name: m['name'] as String, recht: m['recht'] as String),
+      ],
+    );
+    if (jsonEncode(neu.toJson()) != jsonEncode(r.toJson())) {
+      await ablage.schreiben(dek, 'raeume', id, neu.toJson(), tx: tx);
+      await stand.vormerken('raeume', id, tx: tx);
+    }
+    return neu;
   }
 
   Future<void> _einspielen(
@@ -306,6 +435,7 @@ class SyncMotor {
       inhalt: inhaltVon.inhalt,
       bloecke: inhaltVon.bloecke,
       geaendert: inhaltVon.geaendert,
+      blockOrt: inhaltVon.blockOrt,
     );
     if (ergebnis.pfad == dort.pfad && ergebnis.sha256 == dort.sha256) {
       await stand.erledigt(k, tx: tx);
@@ -376,140 +506,431 @@ class SyncMotor {
   /// Der Server kennt weniger als dieses Gerät (aus älterer Sicherung
   /// wiederhergestellt oder ausgetauscht): alles neu holen und alles
   /// Lokale erneut senden. Abweichungen werden zu Konflikt-Fassungen.
-  Future<void> _neuAufbauen(SyncBericht bericht) => sperre.exklusiv(() => ablage.transaktion((tx) async {
+  /// Für einen Raum gilt das nur für das, was dort liegt.
+  Future<void> _neuAufbauen(SyncBericht bericht, Raum? raum) => sperre.exklusiv(() => ablage.transaktion((tx) async {
         bericht.neuAufgebaut = true;
-        await stand.setzeBasis({}, tx: tx);
-        await vault.setzeBasis({}, tx: tx);
-        await stand.allesVormerken(tx: tx);
-        final v = (await stand.verbindung(tx: tx))!;
-        await stand.setzeVerbindung(v.mit(seq: 0, bekannt: 0), tx: tx);
+        final orte = await stand.orte(tx: tx);
+        final basis = await stand.basis(tx: tx);
+        final vBasis = await vault.basis(tx: tx);
+        if (raum == null) {
+          await stand.allesVormerken(tx: tx);
+          basis.removeWhere((k, _) => !orte.containsKey(k));
+          final v = (await stand.verbindung(tx: tx))!;
+          await stand.setzeVerbindung(v.mit(seq: 0, bekannt: 0), tx: tx);
+        } else {
+          final st = await stand.raumStaende(tx: tx);
+          st[raum.id] = (seq: 0, bekannt: 0, info: 0);
+          await stand.setzeRaumStaende(st, tx: tx);
+          for (final k in [for (final e in orte.entries) if (e.value == raum.id) e.key]) {
+            basis.remove(k);
+            if (raum.schreibbar) await stand.vormerken(SyncStand.teile(k).$1, SyncStand.teile(k).$2, tx: tx);
+          }
+        }
+        for (final id in vBasis.keys.toList()) {
+          if (!basis.containsKey(SyncStand.schluessel(vaultBereich, id))) vBasis.remove(id);
+        }
+        await vault.setzeBasis(vBasis, tx: tx);
+        await stand.setzeBasis(basis, tx: tx);
       }));
+
+  // ---------------------------------------------------------------------
+  // Räume verwalten
+
+  /// Gleicht die Raumliste mit dem Server ab: neue Mitglieder erkennen
+  /// (Eigentümer), neue Schlüssel und Rechte übernehmen (Mitglied), und
+  /// Räume ohne Zugang mehr aufräumen.
+  Future<void> _raeumeAbgleichen(SyncBericht bericht) async {
+    final lokal = await _raeume();
+    if (lokal.isEmpty) return;
+    final server = {for (final r in await api.raeume()) r['id'] as String: r};
+    final jetzt = _uhr();
+    for (final r in lokal) {
+      final s = server[r.id];
+      if (s == null) {
+        await sperre.exklusiv(() => ablage.transaktion((tx) => _raumEntfernen(r, tx)));
+        bericht.raeumeEntfernt.add(r.name);
+        continue;
+      }
+      Raum neu = r;
+      if (r.eigen) {
+        final bekannt = {for (final m in r.mitglieder) m.konto: m};
+        final offen = [...r.einladungen.where((e) => e.bis.isAfter(jetzt))];
+        final mitglieder = <Mitglied>[];
+        for (final m in (s['mitglieder'] as List).cast<Map<String, dynamic>>()) {
+          final konto = m['konto'] as String;
+          final alt = bekannt[konto];
+          if (alt != null) {
+            mitglieder.add(alt.mit(recht: m['recht'] as String));
+            continue;
+          }
+          for (final e in offen) {
+            final name = Raum.antwortName(e.slot, e.paar, m['antwort'] as String);
+            if (name == null) continue;
+            final neues = Mitglied(konto: konto, name: name, recht: m['recht'] as String, paar: e.paar);
+            mitglieder.add(neues);
+            offen.remove(e);
+            // Aktuelle Schlüssel nachreichen (die Einladung kann älter sein
+            // als der letzte Schlüsselwechsel).
+            await api.mitgliedAendern(r.id, konto, paket: r.mitgliedPaket(e.paar));
+            bericht.neueMitglieder.add('$name (${r.name})');
+            break;
+          }
+        }
+        neu = r.kopie(mitglieder: mitglieder, einladungen: offen);
+      } else {
+        final paket = s['paket'] as String?;
+        final k = paket == null || r.paar == null ? null : Raum.mitgliedPaketOeffnen(r.id, r.paar!, paket);
+        neu = r.kopie(recht: s['recht'] as String, schluessel: k?.schluessel, epoche: k?.epoche);
+      }
+      if (jsonEncode(neu.toJson()) != jsonEncode(r.toJson())) {
+        await sperre.exklusiv(() => ablage.transaktion((tx) async {
+              await ablage.schreiben(dek, 'raeume', r.id, neu.toJson(), tx: tx);
+              await stand.vormerken('raeume', r.id, tx: tx);
+            }));
+        bericht.raeumeGeaendert = true;
+      }
+      if (neu.eigen) await infoSenden(neu);
+    }
+  }
+
+  /// Schreibt die Raum-Info (Name, Art, Mitglieder), wenn sie sich geändert
+  /// hat. Nur der Eigentümer.
+  Future<void> infoSenden(Raum r) async {
+    final daten = {
+      'name': r.name,
+      'art': r.art.name,
+      'von': r.von,
+      'mitglieder': [for (final m in r.mitglieder) {'name': m.name, 'recht': m.recht}],
+    };
+    final st = await stand.raumStaende();
+    final alt = st[r.id];
+    final hash = sha256Hex(utf8.encode(jsonEncode(daten)));
+    if (await ablage.lesenEinzeln(dek, 'sync', 'raum_info_${r.id}').then((j) => j?['hash']) == hash) return;
+    var basis = alt?.info ?? 0;
+    for (var versuch = 0; versuch < 2; versuch++) {
+      final e = (await api.schreiben([
+        (
+          id: r.objektId('raum', 'info'),
+          basis: basis,
+          aenderung: _uuid.v4(),
+          daten: r.verschluesseln(Umschlag(bereich: 'raum', id: 'info', schema: aktuellesSchema, daten: daten)),
+        ),
+      ], raum: r.id))
+          .single;
+      basis = e.seq;
+      if (e.ok) break;
+    }
+    final neu = await stand.raumStaende();
+    final x = neu[r.id];
+    neu[r.id] = (seq: x?.seq ?? 0, bekannt: x?.bekannt ?? 0, info: basis);
+    await stand.setzeRaumStaende(neu);
+    await ablage.schreiben(dek, 'sync', 'raum_info_${r.id}', {'id': 'raum_info_${r.id}', 'hash': hash});
+  }
+
+  /// Kein Zugang mehr zu [r] (entfernt, ausgetreten, Raum gelöscht).
+  /// Mitglied: was aus dem Raum stammte, verschwindet hier. Eigentümer
+  /// (Raum auf einem anderen eigenen Gerät beendet): alles wird wieder
+  /// privat und im eigenen Konto abgelegt.
+  Future<void> raumEntfernen(Raum r, DatabaseClient tx) => _raumEntfernen(r, tx);
+
+  Future<void> _raumEntfernen(Raum r, DatabaseClient tx) async {
+    final orte = await stand.orte(tx: tx);
+    final basis = await stand.basis(tx: tx);
+    final vBasis = await vault.basis(tx: tx);
+    for (final bereich in ['termine', 'aufgaben']) {
+      for (final d in await ablage.lesen(dek, bereich, tx: tx)) {
+        if (d['raum'] != r.id) continue;
+        final k = SyncStand.schluessel(bereich, d['id'] as String);
+        final ausgang = await stand.ausgang(tx: tx);
+        if (r.eigen || ausgang.containsKey(k)) {
+          // Eigentümer behält alles privat; ein Mitglied behält eine noch
+          // nicht gesendete eigene Änderung als privaten Eintrag.
+          await ablage.schreiben(dek, bereich, d['id'] as String, {...d}..remove('raum'), tx: tx);
+          await stand.vormerken(bereich, d['id'] as String, tx: tx);
+        } else {
+          await ablage.loeschen(bereich, d['id'] as String, tx: tx);
+          await stand.erledigt(k, tx: tx);
+        }
+      }
+    }
+    for (final d in await vault.alle(tx: tx)) {
+      final drin = d.blockOrt == r.id || (r.ordner != null && d.pfad.startsWith('${r.ordner}/'));
+      if (!drin) continue;
+      final k = SyncStand.schluessel(vaultBereich, d.id);
+      if (r.eigen) {
+        await stand.vormerken(vaultBereich, d.id, tx: tx);
+      } else if ((await stand.ausgang(tx: tx)).containsKey(k) && r.ordner != null && d.pfad.startsWith('${r.ordner}/')) {
+        // Nicht gesendete eigene Änderung: privat unter „Eigene Änderungen“.
+        final ziel = 'Eigene Änderungen/${r.name.replaceAll('/', '-')}/${d.pfad.substring(r.ordner!.length + 1)}';
+        await vault.schreiben(d.kopie(pfad: ziel, blockOrt: () => null), tx: tx);
+        await stand.vormerken(vaultBereich, d.id, tx: tx);
+      } else {
+        await vault.loeschen(d.id, tx: tx);
+        await stand.erledigt(k, tx: tx);
+        vBasis.remove(d.id);
+      }
+    }
+    for (final k in [for (final e in orte.entries) if (e.value == r.id) e.key]) {
+      orte.remove(k);
+      basis.remove(k);
+      if (SyncStand.teile(k).$1 == vaultBereich) vBasis.remove(SyncStand.teile(k).$2);
+    }
+    await stand.setzeOrte(orte, tx: tx);
+    await stand.setzeBasis(basis, tx: tx);
+    await vault.setzeBasis(vBasis, tx: tx);
+    final st = await stand.raumStaende(tx: tx)..remove(r.id);
+    await stand.setzeRaumStaende(st, tx: tx);
+    final z = await stand.zurueckgestellt(tx: tx)..removeWhere((_, x) => x.raum == r.id);
+    await stand.setzeZurueckgestellt(z, tx: tx);
+    await ablage.loeschen('raeume', r.id, tx: tx);
+    await stand.vormerken('raeume', r.id, tx: tx);
+  }
 
   // ---------------------------------------------------------------------
   // Senden
 
+  _Ort _ort(Verbindung v, Raum? r) => _Ort(v.schluessel, r);
+
   /// Sendet Ausstehendes; `true`, wenn der Server Konflikte gemeldet hat.
+  /// Wechselt ein Datensatz den Ort (privat ↔ geteilt), wird er am alten
+  /// Ort gelöscht und am neuen angelegt.
   Future<bool> _senden(SyncBericht bericht) async {
     final v = (await stand.verbindung())!;
-    var konflikt = false;
-    final zurueck = await _vaultVorbereiten(v, bericht);
-    final alle = (await stand.ausgang()).entries.where((e) => !zurueck.contains(e.key)).toList();
-    final gesendetVault = <String, VaultDatei>{};
-    for (var i = 0; i < alle.length; i += proSenden) {
-      final teil = alle.sublist(i, i + proSenden > alle.length ? alle.length : i + proSenden);
-      final aenderungen = <({String id, int basis, String aenderung, String daten})>[];
-      final zuordnung = <String, MapEntry<String, String>>{};
-      await sperre.exklusiv(() async {
-        final basis = await stand.basis();
-        for (final e in teil) {
-          final (bereich, id) = SyncStand.teile(e.key);
-          var daten = await ablage.lesenEinzeln(dek, bereich, id);
-          if (daten == null && basis[e.key] == null) {
-            // Nie gesendet und schon wieder gelöscht: nichts zu tun.
-            await stand.erledigt(e.key);
-            continue;
-          }
-          if (bereich == 'einstellungen' && daten != null) daten = {...daten}..remove('letzteSicherung');
-          if (bereich == vaultBereich && daten != null) gesendetVault[e.key] = VaultDatei.fromJson(daten);
-          final oid = v.schluessel.objektId(bereich, id);
-          zuordnung[oid] = e;
-          aenderungen.add((
-            id: oid,
-            basis: basis[e.key] ?? 0,
-            aenderung: e.value,
-            daten: v.schluessel.verschluesseln(Umschlag(bereich: bereich, id: id, schema: aktuellesSchema, daten: daten)),
-          ));
+    final raeume = {for (final r in await _raeume()) r.id: r};
+    final zurueck = await _vaultVorbereiten(v, bericht, raeume);
+    final eintraege = (await stand.ausgang()).entries.where((e) => !zurueck.contains(e.key)).toList();
+    final weg = <String?, List<_Sendung>>{};
+    final hin = <String?, List<_Sendung>>{};
+    await sperre.exklusiv(() async {
+      final basis = await stand.basis();
+      final orte = await stand.orte();
+      for (final e in eintraege) {
+        final (bereich, id) = SyncStand.teile(e.key);
+        var daten = await ablage.lesenEinzeln(dek, bereich, id);
+        final hatBasis = basis[e.key] != null;
+        if (daten == null && !hatBasis) {
+          // Nie gesendet und schon wieder gelöscht: nichts zu tun.
+          await stand.erledigt(e.key);
+          continue;
         }
-      });
-      if (aenderungen.isEmpty) continue;
-      final ergebnisse = await api.schreiben(aenderungen);
-      await sperre.exklusiv(() => ablage.transaktion((tx) async {
-            final basis = await stand.basis(tx: tx);
-            final ausgang = await stand.ausgang(tx: tx);
-            final vBasis = await vault.basis(tx: tx);
-            for (final r in ergebnisse) {
-              final e = zuordnung[r.id];
-              if (e == null) continue;
-              if (!r.ok) {
-                konflikt = true;
-                continue;
-              }
-              bericht.gesendet++;
-              basis[e.key] = r.seq;
-              final (b, id) = SyncStand.teile(e.key);
-              if (b == vaultBereich) {
-                final d = gesendetVault[e.key];
-                if (d == null) {
-                  vBasis.remove(id);
+        final alt = hatBasis ? orte[e.key] : null;
+        final ziel = daten == null ? alt : zielVon(bereich, daten, raeume.values);
+        final zr = ziel == null ? null : raeume[ziel];
+        if (ziel != null && (zr == null || !zr.schreibbar)) {
+          // Raum weg oder nur lesbar: nicht senden.
+          if (zr != null) bericht.nurLesen++;
+          await stand.erledigt(e.key);
+          continue;
+        }
+        if (bereich == 'einstellungen' && daten != null) daten = {...daten}..remove('letzteSicherung');
+        VaultDatei? vd;
+        if (daten != null && bereich == vaultBereich) {
+          vd = VaultDatei.fromJson(daten);
+          daten = vd.zumSenden(wurzel: zr?.ordner);
+        } else if (daten != null && (bereich == 'termine' || bereich == 'aufgaben')) {
+          daten = {...daten}..remove('raum');
+        }
+        if (hatBasis && alt != ziel) {
+          final ar = alt == null ? null : raeume[alt];
+          if (alt == null || (ar != null && ar.schreibbar)) {
+            (weg[alt] ??= []).add(_Sendung(e.key, basis[e.key]!, e.value, null, null, alt));
+          }
+        }
+        (hin[ziel] ??= []).add(_Sendung(e.key, hatBasis && alt == ziel ? basis[e.key]! : 0, e.value, daten, vd, ziel));
+      }
+    });
+
+    var konflikt = false;
+    final gescheitert = <String>{};
+    for (final g in weg.entries) {
+      for (final (s, r) in await _schicken(v, raeume[g.key], g.value)) {
+        if (!r.ok) {
+          konflikt = true;
+          gescheitert.add(s.key);
+        }
+      }
+    }
+    for (final g in hin.entries) {
+      final liste = g.value.where((s) => !gescheitert.contains(s.key)).toList();
+      for (var i = 0; i < liste.length; i += proSenden) {
+        final teil = liste.sublist(i, i + proSenden > liste.length ? liste.length : i + proSenden);
+        final ergebnisse = await _schicken(v, raeume[g.key], teil);
+        await sperre.exklusiv(() => ablage.transaktion((tx) async {
+              final basis = await stand.basis(tx: tx);
+              final orte = await stand.orte(tx: tx);
+              final ausgang = await stand.ausgang(tx: tx);
+              final vBasis = await vault.basis(tx: tx);
+              var hoechste = 0;
+              for (final (s, r) in ergebnisse) {
+                if (!r.ok) {
+                  konflikt = true;
+                  continue;
+                }
+                bericht.gesendet++;
+                basis[s.key] = r.seq;
+                if (r.seq > hoechste) hoechste = r.seq;
+                if (s.ort == null) {
+                  orte.remove(s.key);
                 } else {
-                  vBasis[id] = (pfad: d.pfad, sha: d.sha256);
+                  orte[s.key] = s.ort!;
+                }
+                final (b, id) = SyncStand.teile(s.key);
+                if (b == vaultBereich) {
+                  if (s.vault == null) {
+                    vBasis.remove(id);
+                  } else {
+                    vBasis[id] = (pfad: s.vault!.pfad, sha: s.vault!.sha256);
+                  }
+                }
+                // Nur erledigt, wenn hier inzwischen nichts Neues dazukam.
+                if (ausgang[s.key] == s.aenderung) await stand.erledigt(s.key, tx: tx);
+              }
+              await stand.setzeBasis(basis, tx: tx);
+              await stand.setzeOrte(orte, tx: tx);
+              await vault.setzeBasis(vBasis, tx: tx);
+              if (g.key == null) {
+                final jetzt = (await stand.verbindung(tx: tx))!;
+                if (hoechste > jetzt.bekannt) await stand.setzeVerbindung(jetzt.mit(bekannt: hoechste), tx: tx);
+              } else {
+                final st = await stand.raumStaende(tx: tx);
+                final x = st[g.key!];
+                if (hoechste > (x?.bekannt ?? 0)) {
+                  st[g.key!] = (seq: x?.seq ?? 0, bekannt: hoechste, info: x?.info ?? 0);
+                  await stand.setzeRaumStaende(st, tx: tx);
                 }
               }
-              // Nur erledigt, wenn hier inzwischen nichts Neues dazukam.
-              if (ausgang[e.key] == e.value) await stand.erledigt(e.key, tx: tx);
-            }
-            await stand.setzeBasis(basis, tx: tx);
-            await vault.setzeBasis(vBasis, tx: tx);
-            final hoechste = ergebnisse.where((r) => r.ok).fold(0, (m, r) => r.seq > m ? r.seq : m);
-            final jetzt = (await stand.verbindung(tx: tx))!;
-            if (hoechste > jetzt.bekannt) await stand.setzeVerbindung(jetzt.mit(bekannt: hoechste), tx: tx);
-          }));
+            }));
+      }
     }
     return konflikt;
   }
 
+  Future<List<(_Sendung, ({String id, bool ok, int seq, String? daten}))>> _schicken(Verbindung v, Raum? raum, List<_Sendung> liste) async {
+    if (liste.isEmpty) return const [];
+    final ort = _ort(v, raum);
+    final zuordnung = <String, _Sendung>{};
+    final aenderungen = <({String id, int basis, String aenderung, String daten})>[];
+    for (final s in liste) {
+      final (bereich, id) = SyncStand.teile(s.key);
+      final oid = ort.objektId(bereich, id);
+      zuordnung[oid] = s;
+      aenderungen.add((
+        id: oid,
+        basis: s.basis,
+        aenderung: s.aenderung,
+        daten: ort.verschluesseln(Umschlag(bereich: bereich, id: id, schema: aktuellesSchema, daten: s.daten)),
+      ));
+    }
+    final ergebnisse = [for (final r in await api.schreiben(aenderungen, raum: raum?.id)) if (zuordnung[r.id] != null) (zuordnung[r.id]!, r)];
+    // Kommt ein Datensatz an einen Ort zurück, an dem nur noch sein
+    // Löschvermerk liegt (z. B. geteilt und wieder privat), gilt dieser
+    // als Basis.
+    final nochmal = <_Sendung>[];
+    for (final (s, r) in ergebnisse) {
+      if (r.ok || s.basis != 0 || r.daten == null) continue;
+      final dort = ort.entschluesseln(r.id, r.daten!);
+      if (dort != null && dort.daten == null) nochmal.add(_Sendung(s.key, r.seq, s.aenderung, s.daten, s.vault, s.ort));
+    }
+    if (nochmal.isEmpty) return ergebnisse;
+    final zweite = {for (final (s, r) in await _schicken(v, raum, nochmal)) s.key: (s, r)};
+    return [for (final (s, r) in ergebnisse) zweite[s.key] ?? (s, r)];
+  }
+
   /// Prüft ausstehende Vault-Dateien vor dem Senden und lädt fehlende
-  /// Blöcke hoch. Liefert die Schlüssel, die diesmal nicht gesendet werden
-  /// (Secret ohne Freigabe, zu groß, Block fehlt).
+  /// Blöcke an ihren Ort hoch. Liefert die Schlüssel, die diesmal nicht
+  /// gesendet werden (Secret ohne Freigabe, zu groß, Block fehlt).
   ///
-  /// Geprüft wird nur ein Inhalt, den der Server noch nicht kennt; eine
+  /// Geprüft wird ein Inhalt, den der Server noch nicht kennt, und alles,
+  /// was neu in einen geteilten Raum kommt (dort sehen es andere). Eine
   /// reine Umbenennung ändert nichts an dem, was schon dort liegt.
-  Future<Set<String>> _vaultVorbereiten(Verbindung v, SyncBericht bericht) async {
+  Future<Set<String>> _vaultVorbereiten(Verbindung v, SyncBericht bericht, Map<String, Raum> raeume) async {
     final zurueck = <String>{};
     final ausgang = await stand.ausgang();
     final keys = ausgang.keys.where((k) => SyncStand.teile(k).$1 == vaultBereich).toList();
     if (keys.isEmpty) return zurueck;
     final vBasis = await vault.basis();
     final freigaben = await vault.freigaben();
-    final brauchtBloecke = <String, String>{};
+    final basis = await stand.basis();
+    final orte = await stand.orte();
+    final brauchtBloecke = <String?, Map<String, String>>{};
     for (final k in keys) {
       final id = SyncStand.teile(k).$2;
-      final d = await vault.datei(id);
-      if (d == null || vBasis[id]?.sha == d.sha256) continue;
+      var d = await vault.datei(id);
+      if (d == null) continue;
+      final zr = raumFuerPfad(d.pfad, raeume.values);
+      if (zr != null && !zr.schreibbar) continue;
+      final ziel = zr?.id;
+      final neuHier = basis[k] == null || orte[k] != ziel;
+      final inhaltNeu = vBasis[id]?.sha != d.sha256;
+      if (!inhaltNeu && !neuHier && d.blockOrt == ziel) continue;
       if (d.groesse > vaultMaxBytes) {
         bericht.vaultZuGross.add(id);
         zurueck.add(k);
         continue;
       }
-      final inhalt = d.inhalt ?? await _ausCache(d);
-      if (inhalt == null) {
-        // Inhalt nicht hier: dann war er schon beim Server (oder ist weg).
-        for (final b in d.bloecke) {
-          brauchtBloecke[b.id] = k;
-        }
-        continue;
+      Uint8List? inhalt;
+      try {
+        inhalt = d.inhalt ?? await _ausCache(d) ?? await _vomServer(v, d, raeume);
+      } on SyncFehler {
+        inhalt = null;
       }
-      final treffer = secrets.pruefen(inhalt);
-      if (treffer != null && treffer.isNotEmpty && freigaben[id] != d.sha256) {
-        bericht.vaultGesperrt.add(id);
+      if (inhalt == null) {
+        bericht.vaultFehlt.add(id);
         zurueck.add(k);
         continue;
+      }
+      if (inhaltNeu || (neuHier && ziel != null)) {
+        final treffer = secrets.pruefen(inhalt);
+        // Eine Freigabe gilt für genau diesen Inhalt an genau diesem Ort:
+        // Was privat hochgeladen werden durfte, ist nicht automatisch für
+        // andere freigegeben.
+        if (treffer != null && treffer.isNotEmpty && freigaben[freigabeSchluessel(id, ziel)] != d.sha256) {
+          bericht.vaultGesperrt.add(id);
+          zurueck.add(k);
+          continue;
+        }
+      }
+      if (d.inhalt == null && d.blockOrt != ziel) {
+        // Blöcke mit dem Schlüssel des neuen Orts neu bilden.
+        final ort = _ort(v, zr);
+        final neueBloecke = <String, Uint8List>{};
+        final n = vaultDateiAus(
+          id: d.id,
+          pfad: d.pfad,
+          inhalt: inhalt,
+          geaendert: d.geaendert,
+          blockId: ort.blockId,
+          blockOrt: ziel,
+          neueBloecke: neueBloecke,
+        );
+        final alt = d;
+        await sperre.exklusiv(() => ablage.transaktion((tx) async {
+              final jetzt = await vault.datei(id, tx: tx);
+              if (jetzt == null || jetzt.sha256 != alt.sha256 || jetzt.pfad != alt.pfad) return;
+              for (final e in neueBloecke.entries) {
+                await vault.blockSpeichern(e.key, e.value, tx: tx);
+              }
+              await vault.schreiben(n, tx: tx);
+            }));
+        d = n;
       }
       for (final b in d.bloecke) {
-        brauchtBloecke[b.id] = k;
+        (brauchtBloecke[ziel] ??= {})[b.id] = k;
       }
     }
-    if (brauchtBloecke.isEmpty) return zurueck;
-    for (final bid in await api.bloeckeFehlend(brauchtBloecke.keys.toList())) {
-      final k = brauchtBloecke[bid]!;
-      if (zurueck.contains(k)) continue;
-      final klar = await vault.block(bid);
-      if (klar == null) {
-        bericht.vaultFehlt.add(SyncStand.teile(k).$2);
-        zurueck.add(k);
-        continue;
+    for (final g in brauchtBloecke.entries) {
+      final ort = _ort(v, g.key == null ? null : raeume[g.key]);
+      for (final bid in await api.bloeckeFehlend(g.value.keys.toList(), raum: g.key)) {
+        final k = g.value[bid]!;
+        if (zurueck.contains(k)) continue;
+        final klar = await vault.block(bid);
+        if (klar == null) {
+          bericht.vaultFehlt.add(SyncStand.teile(k).$2);
+          zurueck.add(k);
+          continue;
+        }
+        await api.blockSchreiben(bid, ort.blockVerschluesseln(bid, klar), raum: g.key);
       }
-      await api.blockSchreiben(bid, v.schluessel.blockVerschluesseln(bid, klar));
     }
     return zurueck;
   }
@@ -524,18 +945,40 @@ class SyncMotor {
     return teile.takeBytes();
   }
 
+  /// Inhalt vom bisherigen Ort holen (z. B. beim Verschieben in einen Raum).
+  Future<Uint8List?> _vomServer(Verbindung v, VaultDatei d, Map<String, Raum> raeume) async {
+    final r = d.blockOrt == null ? null : raeume[d.blockOrt];
+    if (d.blockOrt != null && r == null) return null;
+    final ort = _ort(v, r);
+    final teile = BytesBuilder(copy: false);
+    for (final b in d.bloecke) {
+      final klar = ort.blockEntschluesseln(b.id, await api.blockLesen(b.id, raum: r?.id), b.groesse);
+      if (klar == null) return null;
+      await vault.blockSpeichern(b.id, klar);
+      teile.add(klar);
+    }
+    final alles = teile.takeBytes();
+    return sha256Hex(alles) == d.sha256 ? alles : null;
+  }
+
   /// Nicht mehr benutzte Blöcke beim Server entfernen lassen (höchstens
-  /// einmal am Tag). Nur nach einem Abgleich, bei dem alles lesbar war:
-  /// sonst könnte ein Block noch zu einer Datei gehören, die hier fehlt.
+  /// einmal am Tag), im Konto und in eigenen Räumen. Nur nach einem
+  /// Abgleich, bei dem alles lesbar war: sonst könnte ein Block noch zu
+  /// einer Datei gehören, die hier fehlt.
   Future<void> _aufraeumen(SyncBericht b) async {
     if (b.defekt > 0) return;
     final zuletzt = await vault.aufgeraeumt();
     if (zuletzt != null && _uhr().difference(zuletzt) < aufraeumenAlle) return;
     final dateien = await vault.alle();
     if (dateien.isEmpty && zuletzt == null) return;
-    final behalten = {for (final d in dateien) for (final x in d.bloecke) x.id};
     try {
+      final behalten = {for (final d in dateien) if (d.blockOrt == null) for (final x in d.bloecke) x.id};
       b.bloeckeAufgeraeumt = await api.bloeckeAufraeumen(behalten.toList());
+      for (final r in await _raeume()) {
+        if (!r.eigen || r.art != RaumArt.vault) continue;
+        final imRaum = {for (final d in dateien) if (d.blockOrt == r.id) for (final x in d.bloecke) x.id};
+        b.bloeckeAufgeraeumt += await api.bloeckeAufraeumen(imRaum.toList(), raum: r.id);
+      }
       await vault.setzeAufgeraeumt(_uhr());
     } on SyncFehler {
       // Aufräumen ist Nebensache; der Abgleich selbst war erfolgreich.
@@ -551,4 +994,32 @@ class SyncMotor {
         List() => [for (final e in x) _sortiert(e)],
         _ => x,
       };
+}
+
+/// Eine Änderung für einen Ort (`null` = eigenes Konto).
+class _Sendung {
+  _Sendung(this.key, this.basis, this.aenderung, this.daten, this.vault, this.ort);
+  final String key;
+  final int basis;
+  final String aenderung;
+
+  /// `null` = Löschvermerk.
+  final Map<String, dynamic>? daten;
+  final VaultDatei? vault;
+  final String? ort;
+}
+
+/// Schlüssel eines Orts: Kontoschlüssel oder Raum.
+class _Ort {
+  _Ort(this.ks, this.raum);
+  final Kontoschluessel ks;
+  final Raum? raum;
+
+  String objektId(String b, String i) => raum?.objektId(b, i) ?? ks.objektId(b, i);
+  String verschluesseln(Umschlag u) => raum?.verschluesseln(u) ?? ks.verschluesseln(u);
+  Umschlag? entschluesseln(String oid, String daten) => raum != null ? raum!.entschluesseln(oid, daten) : ks.entschluesseln(oid, daten);
+  String blockId(Uint8List klar) => raum?.blockId(klar) ?? ks.blockId(klar);
+  Uint8List blockVerschluesseln(String id, Uint8List klar) => raum?.blockVerschluesseln(id, klar) ?? ks.blockVerschluesseln(id, klar);
+  Uint8List? blockEntschluesseln(String id, Uint8List daten, int groesse) =>
+      raum != null ? raum!.blockEntschluesseln(id, daten, groesse) : ks.blockEntschluesseln(id, daten, groesse);
 }

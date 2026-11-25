@@ -11,7 +11,7 @@ import 'speicher.dart';
 /// Version des Sync-Vertrags (Pfadpräfix `/v1`). Innerhalb einer Version
 /// kommen nur Felder hinzu; Clients ignorieren unbekannte Felder.
 const apiVersion = 1;
-const serverVersion = '1.1.0';
+const serverVersion = '1.2.0';
 
 class Konfiguration {
   const Konfiguration({
@@ -68,6 +68,7 @@ Response _json(Object? daten, {int status = 200}) =>
 Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
   final versuche = <String, List<DateTime>>{};
   final hex64 = RegExp(r'^[0-9a-f]{64}$');
+  final hex32 = RegExp(r'^[0-9a-f]{32}$');
   final objektId = RegExp(r'^[0-9a-f]{32,64}$');
 
   void begrenzen(Request r) {
@@ -135,6 +136,96 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
     return g;
   }
 
+
+  /// Wo gelesen oder geschrieben wird, mit Rechteprüfung. Fremde Räume
+  /// sehen aus wie nicht vorhandene (kein Hinweis, dass es sie gibt).
+  ({Ort ort, String zahler}) zugriff(Request r, String? raum, {bool schreiben = false, bool nurEigentuemer = false}) {
+    final g = angemeldet(r);
+    if (raum == null) return (ort: Ort.konto(g.konto), zahler: g.konto);
+    final recht = s.recht(g.konto, raum);
+    if (recht == null) throw _Fehler(404, 'nicht-gefunden', 'Freigabe nicht gefunden.');
+    if (nurEigentuemer && recht != 'eigentuemer') throw _Fehler(403, 'verboten', 'Nur der Eigentümer darf das.');
+    if (schreiben && recht == 'lesen') throw _Fehler(403, 'verboten', 'Für diese Freigabe hast du nur Leserechte.');
+    return (ort: Ort.raum(raum), zahler: s.db.select('SELECT eigentuemer FROM raeume WHERE id = ?', [raum]).first['eigentuemer'] as String);
+  }
+
+  Response abrufen(Request r, String? raum) {
+    final o = zugriff(r, raum).ort;
+    final seit = int.tryParse(r.url.queryParameters['seit'] ?? '0') ?? 0;
+    final max = (int.tryParse(r.url.queryParameters['max'] ?? '') ?? k.maxProAbruf).clamp(1, k.maxProAbruf);
+    final e = s.abrufen(o, seit, max);
+    return _json({'objekte': e.objekte, 'bis': e.bis, 'mehr': e.mehr});
+  }
+
+  Future<Response> schreiben(Request r, String? raum) async {
+    final (:ort, :zahler) = zugriff(r, raum, schreiben: true);
+    final liste = (await lies(r))['aenderungen'];
+    if (liste is! List || liste.length > k.maxProSchreiben) {
+      throw _Fehler(400, 'ungueltig', '„aenderungen“ fehlt oder enthält mehr als ${k.maxProSchreiben} Einträge.');
+    }
+    final aenderungen = [
+      for (final x in liste)
+        if (x is Map<String, dynamic>)
+          (
+            id: feld<String>(x, 'id', maxLaenge: 64),
+            basis: feld<int>(x, 'basis'),
+            aenderung: feld<String>(x, 'aenderung', maxLaenge: 64),
+            daten: feld<String>(x, 'daten', maxLaenge: k.maxObjekt),
+          )
+        else
+          throw _Fehler(400, 'ungueltig', 'Ungültige Änderung.'),
+    ];
+    for (final a in aenderungen) {
+      if (!objektId.hasMatch(a.id)) throw _Fehler(400, 'ungueltig', 'Ungültige Objekt-ID.');
+    }
+    if (k.maxKonto > 0 && s.belegt(zahler) + aenderungen.fold(0, (n, a) => n + a.daten.length) > k.maxKonto) {
+      throw _Fehler(413, 'kontingent', 'Der Speicherplatz dieses Kontos ist aufgebraucht.');
+    }
+    final e = s.schreiben(ort, aenderungen);
+    return _json({
+      'ergebnisse': [
+        for (final x in e) {'id': x.id, 'status': x.ok ? 'ok' : 'konflikt', 'seq': x.seq, if (x.daten != null) 'daten': x.daten},
+      ],
+    });
+  }
+
+  Future<Response> blockSchreiben(Request r, String? raum, String id) async {
+    final (:ort, :zahler) = zugriff(r, raum, schreiben: true);
+    if (!objektId.hasMatch(id)) throw _Fehler(400, 'ungueltig', 'Ungültige Block-ID.');
+    final daten = await roh(r, k.maxBlock);
+    if (daten.isEmpty) throw _Fehler(400, 'ungueltig', 'Leerer Block.');
+    try {
+      s.blockSchreiben(ort, id, daten, maxKonto: k.maxKonto, zahler: zahler);
+    } on SpeicherFehler catch (e) {
+      throw _Fehler(413, 'kontingent', e.meldung);
+    }
+    return _json({'ok': true});
+  }
+
+  Response blockLesen(Request r, String? raum, String id) {
+    final o = zugriff(r, raum).ort;
+    final daten = objektId.hasMatch(id) ? s.blockLesen(o, id) : null;
+    if (daten == null) throw _Fehler(404, 'nicht-gefunden', 'Block nicht gefunden.');
+    return Response.ok(daten, headers: {'content-type': 'application/octet-stream'});
+  }
+
+  Future<Response> bloeckeFehlend(Request r, String? raum) async {
+    final o = zugriff(r, raum).ort;
+    return _json({'fehlend': s.bloeckeFehlend(o, idListe(await lies(r), 'ids'))});
+  }
+
+  Future<Response> bloeckeAufraeumen(Request r, String? raum) async {
+    // In Räumen räumt nur der Eigentümer auf (er sieht alle Dateien).
+    final o = zugriff(r, raum, nurEigentuemer: raum != null).ort;
+    final behalten = idListe(await lies(r), 'behalten', max: 200000).toSet();
+    return _json({'geloescht': s.bloeckeAufraeumen(o, behalten)});
+  }
+
+  void eigentuemer(Geraet g, String raum) {
+    final recht = s.recht(g.konto, raum);
+    if (recht == null) throw _Fehler(404, 'nicht-gefunden', 'Freigabe nicht gefunden.');
+    if (recht != 'eigentuemer') throw _Fehler(403, 'verboten', 'Nur der Eigentümer darf das.');
+  }
 
   final app = Router()
     ..get('/v1/info', (Request r) => _json({'dienst': 'personal-tracker-sync', 'api': apiVersion, 'version': serverVersion, 'instanz': s.instanz}))
@@ -217,71 +308,96 @@ Handler syncHandler(Speicher s, {Konfiguration k = const Konfiguration()}) {
       if (e == null) throw _Fehler(404, 'nicht-gefunden', 'Kopplungscode unbekannt oder abgelaufen.');
       return _json({'konto': e.konto, 'paket': e.paket, 'geraet': e.geraet, 'token': e.token});
     })
-    ..get('/v1/objekte', (Request r) {
+    ..get('/v1/objekte', (Request r) => abrufen(r, null))
+    ..post('/v1/objekte', (Request r) => schreiben(r, null))
+    ..put('/v1/bloecke/<id>', (Request r, String id) => blockSchreiben(r, null, id))
+    ..get('/v1/bloecke/<id>', (Request r, String id) => blockLesen(r, null, id))
+    ..post('/v1/bloecke/fehlend', (Request r) => bloeckeFehlend(r, null))
+    ..post('/v1/bloecke/aufraeumen', (Request r) => bloeckeAufraeumen(r, null))
+    // Geteilte Räume (M5)
+    ..get('/v1/raeume', (Request r) {
       final g = angemeldet(r);
-      final seit = int.tryParse(r.url.queryParameters['seit'] ?? '0') ?? 0;
-      final max = (int.tryParse(r.url.queryParameters['max'] ?? '') ?? k.maxProAbruf).clamp(1, k.maxProAbruf);
-      final e = s.abrufen(g.konto, seit, max);
-      return _json({'objekte': e.objekte, 'bis': e.bis, 'mehr': e.mehr});
+      return _json({'raeume': s.raeume(g.konto)});
     })
-    ..post('/v1/objekte', (Request r) async {
+    ..post('/v1/raeume', (Request r) async {
       final g = angemeldet(r);
-      final liste = (await lies(r))['aenderungen'];
-      if (liste is! List || liste.length > k.maxProSchreiben) {
-        throw _Fehler(400, 'ungueltig', '„aenderungen“ fehlt oder enthält mehr als ${k.maxProSchreiben} Einträge.');
-      }
-      final aenderungen = [
-        for (final x in liste)
-          if (x is Map<String, dynamic>)
-            (
-              id: feld<String>(x, 'id', maxLaenge: 64),
-              basis: feld<int>(x, 'basis'),
-              aenderung: feld<String>(x, 'aenderung', maxLaenge: 64),
-              daten: feld<String>(x, 'daten', maxLaenge: k.maxObjekt),
-            )
-          else
-            throw _Fehler(400, 'ungueltig', 'Ungültige Änderung.'),
-      ];
-      for (final a in aenderungen) {
-        if (!objektId.hasMatch(a.id)) throw _Fehler(400, 'ungueltig', 'Ungültige Objekt-ID.');
-      }
-      if (k.maxKonto > 0 && s.belegt(g.konto) + aenderungen.fold(0, (n, a) => n + a.daten.length) > k.maxKonto) {
-        throw _Fehler(413, 'kontingent', 'Der Speicherplatz dieses Kontos ist aufgebraucht.');
-      }
-      final e = s.schreiben(g.konto, aenderungen);
-      return _json({
-        'ergebnisse': [
-          for (final x in e) {'id': x.id, 'status': x.ok ? 'ok' : 'konflikt', 'seq': x.seq, if (x.daten != null) 'daten': x.daten},
-        ],
-      });
-    })
-    ..put('/v1/bloecke/<id>', (Request r, String id) async {
-      final g = angemeldet(r);
-      if (!objektId.hasMatch(id)) throw _Fehler(400, 'ungueltig', 'Ungültige Block-ID.');
-      final daten = await roh(r, k.maxBlock);
-      if (daten.isEmpty) throw _Fehler(400, 'ungueltig', 'Leerer Block.');
+      final id = feld<String>(await lies(r), 'id', maxLaenge: 64);
+      if (!hex32.hasMatch(id)) throw _Fehler(400, 'ungueltig', 'Ungültige Raum-ID.');
       try {
-        s.blockSchreiben(g.konto, id, daten, maxKonto: k.maxKonto);
+        s.raumAnlegen(g.konto, id);
       } on SpeicherFehler catch (e) {
-        throw _Fehler(413, 'kontingent', e.meldung);
+        throw _Fehler(409, 'vorhanden', e.meldung);
+      }
+      return _json({'ok': true}, status: 201);
+    })
+    ..delete('/v1/raeume/<raum>', (Request r, String raum) {
+      final g = angemeldet(r);
+      final recht = s.recht(g.konto, raum);
+      if (recht == null) throw _Fehler(404, 'nicht-gefunden', 'Freigabe nicht gefunden.');
+      // Eigentümer löschen den Raum, Mitglieder treten aus.
+      if (recht == 'eigentuemer') {
+        s.raumLoeschen(raum);
+      } else {
+        s.mitgliedEntfernen(raum, g.konto);
       }
       return _json({'ok': true});
     })
-    ..get('/v1/bloecke/<id>', (Request r, String id) {
+    ..post('/v1/raeume/<raum>/einladungen', (Request r, String raum) async {
       final g = angemeldet(r);
-      final daten = objektId.hasMatch(id) ? s.blockLesen(g.konto, id) : null;
-      if (daten == null) throw _Fehler(404, 'nicht-gefunden', 'Block nicht gefunden.');
-      return Response.ok(daten, headers: {'content-type': 'application/octet-stream'});
+      eigentuemer(g, raum);
+      final j = await lies(r);
+      final slot = feld<String>(j, 'slot', maxLaenge: 64);
+      if (!hex64.hasMatch(slot)) throw _Fehler(400, 'ungueltig', 'Ungültiger Einladungs-Slot.');
+      final recht = feld<String>(j, 'recht', maxLaenge: 20);
+      if (!Speicher.rechte.contains(recht)) throw _Fehler(400, 'ungueltig', 'Recht muss „lesen“ oder „schreiben“ sein.');
+      final sek = feld<int>(j, 'gueltigSekunden');
+      if (sek < 30 || sek > 7 * 24 * 3600) throw _Fehler(400, 'ungueltig', 'Gültigkeit zwischen 30 Sekunden und 7 Tagen.');
+      try {
+        s.einladungAnlegen(raum, slot,
+            recht: recht, paket: feld<String>(j, 'paket'), mitgliedPaket: feld<String>(j, 'mitgliedPaket'), gueltig: Duration(seconds: sek));
+      } on SpeicherFehler catch (e) {
+        throw _Fehler(429, 'zu-viele', e.meldung);
+      }
+      return _json({'ok': true}, status: 201);
     })
-    ..post('/v1/bloecke/fehlend', (Request r) async {
+    ..post('/v1/einladungen/<slot>/annehmen', (Request r, String slot) async {
+      begrenzen(r);
       final g = angemeldet(r);
-      return _json({'fehlend': s.bloeckeFehlend(g.konto, idListe(await lies(r), 'ids'))});
+      if (!hex64.hasMatch(slot)) throw _Fehler(404, 'nicht-gefunden', 'Einladung unbekannt oder abgelaufen.');
+      final antwort = feld<String>(await lies(r), 'antwort', maxLaenge: 4096);
+      try {
+        final e = s.einladungAnnehmen(slot, g.konto, antwort);
+        if (e == null) throw _Fehler(404, 'nicht-gefunden', 'Einladung unbekannt oder abgelaufen.');
+        return _json({'raum': e.raum, 'recht': e.recht, 'paket': e.paket});
+      } on SpeicherFehler catch (e) {
+        throw _Fehler(409, 'vorhanden', e.meldung);
+      }
     })
-    ..post('/v1/bloecke/aufraeumen', (Request r) async {
+    ..put('/v1/raeume/<raum>/mitglieder/<konto>', (Request r, String raum, String konto) async {
       final g = angemeldet(r);
-      final behalten = idListe(await lies(r), 'behalten', max: 200000).toSet();
-      return _json({'geloescht': s.bloeckeAufraeumen(g.konto, behalten)});
-    });
+      eigentuemer(g, raum);
+      final j = await lies(r);
+      final recht = j['recht'];
+      if (recht != null && !Speicher.rechte.contains(recht)) throw _Fehler(400, 'ungueltig', 'Recht muss „lesen“ oder „schreiben“ sein.');
+      final paket = j['paket'];
+      if (paket != null && (paket is! String || paket.length > 65536)) throw _Fehler(400, 'ungueltig', 'Ungültiges Paket.');
+      if (!s.mitgliedAendern(raum, konto, recht: recht as String?, paket: paket as String?)) {
+        throw _Fehler(404, 'nicht-gefunden', 'Mitglied nicht gefunden.');
+      }
+      return _json({'ok': true});
+    })
+    ..delete('/v1/raeume/<raum>/mitglieder/<konto>', (Request r, String raum, String konto) {
+      final g = angemeldet(r);
+      eigentuemer(g, raum);
+      if (!s.mitgliedEntfernen(raum, konto)) throw _Fehler(404, 'nicht-gefunden', 'Mitglied nicht gefunden.');
+      return _json({'ok': true});
+    })
+    ..get('/v1/raeume/<raum>/objekte', (Request r, String raum) => abrufen(r, raum))
+    ..post('/v1/raeume/<raum>/objekte', (Request r, String raum) => schreiben(r, raum))
+    ..put('/v1/raeume/<raum>/bloecke/<id>', (Request r, String raum, String id) => blockSchreiben(r, raum, id))
+    ..get('/v1/raeume/<raum>/bloecke/<id>', (Request r, String raum, String id) => blockLesen(r, raum, id))
+    ..post('/v1/raeume/<raum>/bloecke/fehlend', (Request r, String raum) => bloeckeFehlend(r, raum))
+    ..post('/v1/raeume/<raum>/bloecke/aufraeumen', (Request r, String raum) => bloeckeAufraeumen(r, raum));
 
   Handler fehlerBehandeln(Handler inner) => (r) async {
         try {

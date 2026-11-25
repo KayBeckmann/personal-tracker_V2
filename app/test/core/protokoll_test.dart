@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:personal_tracker/core/krypto/krypto.dart';
+import 'package:personal_tracker/core/raeume/raum.dart';
 import 'package:personal_tracker/core/sync/sync_krypto.dart';
 import 'package:personal_tracker/core/vault/vault_datei.dart';
 
@@ -14,6 +15,15 @@ void main() {
   final ks = Kontoschluessel(Uint8List.fromList(List.generate(32, (i) => i)));
   final block = Uint8List.fromList(utf8.encode('Inhalt eines Blocks ✓'));
   final code = Kopplungscode.lesen('ABCD-EFGH-JKMN-PQRS-TVWX')!;
+  final raum = Raum(
+    id: '0123456789abcdef0123456789abcdef',
+    art: RaumArt.vault,
+    name: 'Familie',
+    recht: 'schreiben',
+    idSchluessel: Uint8List.fromList(List.generate(32, (i) => 100 + i)),
+    schluessel: {1: Uint8List.fromList(List.generate(32, (i) => 200 - i)), 2: Uint8List.fromList(List.generate(32, (i) => i * 3))},
+    epoche: 2,
+  );
 
   Map<String, dynamic> erzeugen() {
     final bid = ks.blockId(block);
@@ -27,6 +37,15 @@ void main() {
       'block': {'klar': base64Encode(block), 'id': bid, 'daten': base64Encode(ks.blockVerschluesseln(bid, block))},
       'geraetName': {'daten': ks.geraetName('Laptop'), 'name': 'Laptop'},
       'kopplung': {'code': code.text, 'slot': code.slot, 'paket': code.paket('konto-1', ks)},
+      'raum': {
+        'json': raum.toJson(),
+        'objektId': raum.objektId('vault', 'datei-1'),
+        'umschlag': raum.verschluesseln(const Umschlag(bereich: 'vault', id: 'datei-1', schema: 5, daten: {'pfad': 'Plan.md'})),
+        'blockId': raum.blockId(block),
+        'block': base64Encode(raum.blockVerschluesseln(raum.blockId(block), block)),
+        'mitgliedPaar': base64Encode(Uint8List.fromList(List.generate(32, (i) => 7))),
+        'mitgliedPaket': raum.mitgliedPaket(Uint8List.fromList(List.generate(32, (i) => 7))),
+      },
     };
   }
 
@@ -47,5 +66,11 @@ void main() {
     final c = Kopplungscode.lesen(v['kopplung']['code'] as String)!;
     expect(c.slot, v['kopplung']['slot']);
     expect(c.paketOeffnen(v['kopplung']['paket'] as String)!.konto, 'konto-1');
+    final rv = v['raum'] as Map<String, dynamic>;
+    final r = Raum.fromJson((rv['json'] as Map).cast<String, dynamic>());
+    expect(r.objektId('vault', 'datei-1'), rv['objektId']);
+    expect(r.entschluesseln(rv['objektId'] as String, rv['umschlag'] as String)!.daten, {'pfad': 'Plan.md'});
+    expect(r.blockEntschluesseln(rv['blockId'] as String, base64Decode(rv['block'] as String), block.length), block);
+    expect(Raum.mitgliedPaketOeffnen(r.id, base64Decode(rv['mitgliedPaar'] as String), rv['mitgliedPaket'] as String)!.epoche, 2);
   });
 }

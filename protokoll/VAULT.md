@@ -1,6 +1,6 @@
 # Vault-Sync: gemeinsamer Vertrag von App und Obsidian-Plugin
 
-Stand: M4 (App 0.4.0, Plugin 0.1.0, Server 1.1.0). Grundlage ist der Sync-Vertrag v1 ([server/API.md](../server/API.md)) mit der Kryptografie aus [server/SICHERHEIT.md](../server/SICHERHEIT.md). Hier steht nur, was für Vault-Dateien dazukommt. Implementiert ist es zweimal: in der App (`app/lib/core/vault/`, `app/lib/core/sync/sync_motor.dart`) und im Plugin (`obsidian/src/`). Die gemeinsamen Testvektoren in diesem Ordner halten beide gleich.
+Stand: M4/M5 (App 0.5.0, Plugin 0.2.0, Server 1.2.0). Geteilte Ordner: [RAEUME.md](RAEUME.md). Grundlage ist der Sync-Vertrag v1 ([server/API.md](../server/API.md)) mit der Kryptografie aus [server/SICHERHEIT.md](../server/SICHERHEIT.md). Hier steht nur, was für Vault-Dateien dazukommt. Implementiert ist es zweimal: in der App (`app/lib/core/vault/`, `app/lib/core/sync/sync_motor.dart`) und im Plugin (`obsidian/src/`). Die gemeinsamen Testvektoren in diesem Ordner halten beide gleich.
 
 ## Objekt einer Datei
 

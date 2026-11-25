@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { hex, hkdf, vonBase64 } from '../src/krypto.ts';
 import { Kontoschluessel, Kopplungscode, konfliktPfad, vaultPfad, ausnahme } from '../src/protokoll.ts';
 import { pruefeText, pruefen } from '../src/secrets.ts';
+import { Raum } from '../src/raum.ts';
 
 const v = JSON.parse(readFileSync(new URL('../../protokoll/testvektoren.json', import.meta.url), 'utf8'));
 const beispiele = JSON.parse(readFileSync(new URL('../../protokoll/secret-beispiele.json', import.meta.url), 'utf8'));
@@ -49,4 +50,20 @@ test('Pfade, Konfliktnamen, Ausnahmen', () => {
   assert.equal(ausnahme('.obsidian/workspace.json'), 'Fensteranordnung je Gerät');
   assert.equal(ausnahme('.obsidian/app.json'), null);
   assert.equal(ausnahme('.stfolder'), 'Syncthing-Verwaltung');
+});
+
+test('Testvektoren der App: Raum (Objekt-ID, Umschlag mit Epoche, Block, Mitglieds-Paket)', async () => {
+  const rv = v.raum;
+  const r = new Raum(rv.json);
+  assert.equal(await r.objektId('vault', 'datei-1'), rv.objektId);
+  assert.deepEqual((await r.entschluesseln(rv.objektId, rv.umschlag))?.daten, { pfad: 'Plan.md' });
+  const klar = vonBase64(v.block.klar);
+  assert.equal(await r.blockId(klar), rv.blockId);
+  assert.deepEqual(await r.blockEntschluesseln(rv.blockId, vonBase64(rv.block), klar.length), klar);
+  assert.equal((await Raum.mitgliedPaketOeffnen(r.id, vonBase64(rv.mitgliedPaar), rv.mitgliedPaket))?.epoche, 2);
+  // Eigene Verschlüsselung (Epoche 2) wieder lesbar, andere Raum-ID nicht.
+  const neu = await r.verschluesseln({ bereich: 'vault', id: 'x', schema: 5, daten: { a: 1 } });
+  assert.deepEqual((await r.entschluesseln(await r.objektId('vault', 'x'), neu))?.daten, { a: 1 });
+  const fremd = new Raum({ ...rv.json, id: 'ffffffffffffffffffffffffffffffff' });
+  assert.equal(await fremd.entschluesseln(await r.objektId('vault', 'x'), neu), null);
 });

@@ -354,4 +354,111 @@ void main() {
     neu.schliessen();
     expect(() => Speicher.oeffnen(pfad), throwsA(isA<SpeicherFehler>()));
   });
+
+  group('Räume', () {
+    Future<(Client, Client, Client, String)> dreiKonten() async {
+      final (eig, _) = await konto();
+      final (les, _) = await konto();
+      final (schr, _) = await konto();
+      final raum = hex(32);
+      expect((await eig.anfrage('POST', '/v1/raeume', {'id': raum})).$1, 201);
+      Future<void> einladen(Client c, String recht) async {
+        final slot = hex(64);
+        expect((await eig.anfrage('POST', '/v1/raeume/$raum/einladungen',
+                {'slot': slot, 'recht': recht, 'paket': 'P-$recht', 'mitgliedPaket': 'M-$recht', 'gueltigSekunden': 3600}))
+            .$1, 201);
+        final (st, j) = await c.anfrage('POST', '/v1/einladungen/$slot/annehmen', {'antwort': 'A-$recht'});
+        expect(st, 200);
+        expect(j, {'raum': raum, 'recht': recht, 'paket': 'P-$recht'});
+        // Einmalig.
+        expect((await c.anfrage('POST', '/v1/einladungen/$slot/annehmen', {'antwort': 'x'})).$1, 404);
+      }
+
+      await einladen(les, 'lesen');
+      await einladen(schr, 'schreiben');
+      return (eig, les, schr, raum);
+    }
+
+    test('Einladung, Rechte und Sicht der Beteiligten', () async {
+      final (eig, les, schr, raum) = await dreiKonten();
+      final (_, e) = await eig.anfrage('GET', '/v1/raeume');
+      final r = (e['raeume'] as List).single as Map;
+      expect(r['recht'], 'eigentuemer');
+      expect((r['mitglieder'] as List).map((m) => [m['recht'], m['antwort']]), [
+        ['lesen', 'A-lesen'],
+        ['schreiben', 'A-schreiben'],
+      ]);
+      final (_, l) = await les.anfrage('GET', '/v1/raeume');
+      expect(l['raeume'], [
+        {'id': raum, 'recht': 'lesen', 'seq': 0, 'paket': 'M-lesen'},
+      ]);
+
+      Future<int> schreibe(Client c, String id) async =>
+          (await c.anfrage('POST', '/v1/raeume/$raum/objekte', {
+            'aenderungen': [
+              {'id': id, 'basis': 0, 'aenderung': hex(8), 'daten': 'D'},
+            ],
+          }))
+              .$1;
+      expect(await schreibe(eig, hex(32)), 200);
+      expect(await schreibe(schr, hex(32)), 200);
+      expect(await schreibe(les, hex(32)), 403);
+      expect((await les.binaer('PUT', '/v1/raeume/$raum/bloecke/${hex(32)}', [1])).$1, 403);
+      final (st, o) = await les.anfrage('GET', '/v1/raeume/$raum/objekte?seit=0');
+      expect(st, 200);
+      expect((o['objekte'] as List).length, 2);
+      // Mitglieder sehen keine Mitgliederliste und können nicht einladen.
+      expect((await les.anfrage('POST', '/v1/raeume/$raum/einladungen', {'slot': hex(64), 'recht': 'lesen', 'paket': 'p', 'mitgliedPaket': 'm', 'gueltigSekunden': 60})).$1, 403);
+      // Objekte des Raums landen nicht im Konto des Eigentümers.
+      expect(((await eig.anfrage('GET', '/v1/objekte?seit=0')).$2['objekte'] as List), isEmpty);
+    });
+
+    test('Fremde sehen nichts; Rechte ändern, Entfernen und Austreten', () async {
+      final (eig, les, schr, raum) = await dreiKonten();
+      final (fremd, _) = await konto();
+      expect((await fremd.anfrage('GET', '/v1/raeume/$raum/objekte')).$1, 404);
+      expect((await fremd.anfrage('DELETE', '/v1/raeume/$raum')).$1, 404);
+      expect((await fremd.anfrage('GET', '/v1/raeume')).$2['raeume'], isEmpty);
+
+      final lesKonto = (await les.anfrage('GET', '/v1/konto')).$2['konto'] as String;
+      expect((await schr.anfrage('PUT', '/v1/raeume/$raum/mitglieder/$lesKonto', {'recht': 'schreiben'})).$1, 403);
+      expect((await eig.anfrage('PUT', '/v1/raeume/$raum/mitglieder/$lesKonto', {'recht': 'schreiben', 'paket': 'M2'})).$1, 200);
+      expect((await les.anfrage('GET', '/v1/raeume')).$2['raeume'][0], {'id': raum, 'recht': 'schreiben', 'seq': 0, 'paket': 'M2'});
+      expect((await eig.anfrage('DELETE', '/v1/raeume/$raum/mitglieder/$lesKonto')).$1, 200);
+      expect((await les.anfrage('GET', '/v1/raeume/$raum/objekte')).$1, 404);
+
+      // Austreten: das Mitglied löscht nur sich, nicht den Raum.
+      expect((await schr.anfrage('DELETE', '/v1/raeume/$raum')).$1, 200);
+      expect((await schr.anfrage('GET', '/v1/raeume')).$2['raeume'], isEmpty);
+      expect((await eig.anfrage('GET', '/v1/raeume')).$2['raeume'], hasLength(1));
+      // Eigentümer löscht den Raum samt Inhalt.
+      expect((await eig.anfrage('DELETE', '/v1/raeume/$raum')).$1, 200);
+      expect(s.db.select('SELECT count(*) n FROM raum_objekte').first['n'], 0);
+    });
+
+    test('Eigentümer kann sich nicht selbst einladen; Einladung läuft ab', () async {
+      final (eig, _) = await konto();
+      final (b, _) = await konto();
+      final raum = hex(32);
+      await eig.anfrage('POST', '/v1/raeume', {'id': raum});
+      final slot = hex(64);
+      await eig.anfrage('POST', '/v1/raeume/$raum/einladungen', {'slot': slot, 'recht': 'lesen', 'paket': 'p', 'mitgliedPaket': 'm', 'gueltigSekunden': 60});
+      expect((await eig.anfrage('POST', '/v1/einladungen/$slot/annehmen', {'antwort': 'a'})).$1, 409);
+      s.db.execute('UPDATE raum_einladungen SET ablauf = 0');
+      expect((await b.anfrage('POST', '/v1/einladungen/$slot/annehmen', {'antwort': 'a'})).$1, 404);
+      expect((await eig.anfrage('POST', '/v1/raeume', {'id': raum})).$1, 409);
+      expect((await eig.anfrage('POST', '/v1/raeume', {'id': 'kurz'})).$1, 400);
+    });
+
+    test('Speicher des Raums zählt beim Eigentümer; Konto löschen räumt Räume ab', () async {
+      final (eig, les, _, raum) = await dreiKonten();
+      final eng = syncHandler(s, k: const Konfiguration(maxKonto: 8000));
+      final ce = Client(eng)..token = eig.token;
+      expect((await ce.binaer('PUT', '/v1/raeume/$raum/bloecke/${hex(32)}', List.filled(6000, 1))).$1, 200);
+      expect((await ce.binaer('PUT', '/v1/bloecke/${hex(32)}', List.filled(3000, 1))).$1, 413);
+      await eig.anfrage('DELETE', '/v1/konto');
+      expect((await les.anfrage('GET', '/v1/raeume')).$2['raeume'], isEmpty);
+      expect(s.db.select('SELECT count(*) n FROM raum_bloecke').first['n'], 0);
+    });
+  });
 }

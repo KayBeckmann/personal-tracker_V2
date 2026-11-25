@@ -130,14 +130,20 @@ class SyncNotifier extends Notifier<SyncStatus> {
 
   SyncApi _api(String server, {String? token}) => SyncApi(serverAdresse(server), client: _client, token: token);
 
+  /// Zählt Starts; ein überholter (später fertig gewordener) Start tut nichts.
+  int _startLauf = 0;
+
   Future<void> _starten() async {
+    final lauf = ++_startLauf;
     final v = await _stand().verbindung();
-    if (!ref.mounted) return;
+    if (!ref.mounted || lauf != _startLauf) return;
     if (v == null) {
       state = const SyncStatus();
       return;
     }
-    state = SyncStatus(verbunden: true, server: v.server, geraet: v.geraet, ausstehend: await _stand().anzahlAusstehend());
+    final ausstehend = await _stand().anzahlAusstehend();
+    if (!ref.mounted || lauf != _startLauf) return;
+    state = SyncStatus(verbunden: true, server: v.server, geraet: v.geraet, ausstehend: ausstehend);
     final takt = ref.read(syncTaktProvider).regelmaessig;
     _regelmaessig?.cancel();
     if (takt > Duration.zero) _regelmaessig = Timer.periodic(takt, (_) => unawaited(abgleichen()));
@@ -177,7 +183,24 @@ class SyncNotifier extends Notifier<SyncStatus> {
     });
   }
 
+  /// Wartet, bis kein Abgleich mehr läuft oder ansteht.
+  Future<void> leerlauf() async {
+    while (_laufend != null || _wartend != null) {
+      await (_wartend ?? _laufend);
+    }
+  }
+
   Future<SyncBericht?> _beginnen() => _laufend = _abgleichen().whenComplete(() => _laufend = null);
+
+  /// Motor für Arbeiten außerhalb eines Abgleichs (Räume verwalten).
+  Future<(SyncMotor, SyncApi)> werkzeug() async {
+    final v = await _verbindung();
+    final api = _api(v.server, token: v.token);
+    return (
+      SyncMotor(ablage: ref.read(ablageProvider), dek: _offen.dek, api: api, sperre: _sitzung.sperre, uhr: ref.read(uhrProvider)),
+      api,
+    );
+  }
 
   Future<SyncBericht?> _abgleichen() async {
     if (ref.read(sitzungProvider) is! Entsperrt || !_sitzung.syncAktiv) return null;

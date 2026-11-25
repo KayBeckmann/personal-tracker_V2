@@ -26,7 +26,7 @@ Dies ist die Schnittstelle zwischen den Apps (Android, Web, später Obsidian) un
 
 ### `GET /v1/info`
 
-Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.1.0", "instanz": "<hex>"}`. Die Apps prüfen damit vor dem Verbinden, ob unter der Adresse ein passender Server läuft.
+Liefert `{"dienst": "personal-tracker-sync", "api": 1, "version": "1.2.0", "instanz": "<hex>"}`. Die Apps prüfen damit vor dem Verbinden, ob unter der Adresse ein passender Server läuft.
 
 ### `POST /v1/konten` – Konto anlegen
 
@@ -121,7 +121,27 @@ Größere Dateien des Vault-Syncs (über 64 KiB) liegen nicht im Objekt, sondern
 - **`POST /v1/bloecke/fehlend`:** `{"ids": [...]}` (höchstens 5000) → `{"fehlend": [...]}`. Vor dem Senden eines Objekts lädt der Client fehlende Blöcke hoch.
 - **`POST /v1/bloecke/aufraeumen`:** `{"behalten": [...]}` → `{"geloescht": n}`. Entfernt Blöcke des Kontos, die nicht in der Liste stehen **und** älter als 24 Stunden sind. Die Schonfrist schützt Blöcke, die ein anderes Gerät gerade hochlädt, bevor sein Objekt ankommt. Clients rufen das nur nach einem vollständigen Abgleich ohne Ausstehendes auf.
 
+### Geteilte Räume (seit Server 1.2.0)
+
+Ein Raum ist ein eigener Objektbereich: ein geteilter Vault-Ordner, Kalender oder eine Aufgabenliste. Er hat einen Eigentümer und Mitglieder mit `lesen` oder `schreiben`. Der Server kennt nur IDs und Rechte. Name, Art und Inhalte verschlüsseln die Clients mit dem Raumschlüssel; siehe [protokoll/RAEUME.md](../protokoll/RAEUME.md).
+
+- **`POST /v1/raeume`** `{"id": "<32 hex>"}`: Raum anlegen. Das anlegende Konto wird Eigentümer.
+- **`GET /v1/raeume`:** alle eigenen Räume und alle, in denen das Konto Mitglied ist.
+  - Eigene: `{"id", "recht": "eigentuemer", "seq", "mitglieder": [{"konto", "recht", "antwort"}], "einladungen": n}`.
+  - Fremde: `{"id", "recht", "seq", "paket"}`.
+- **`DELETE /v1/raeume/<id>`:** Der Eigentümer löscht den Raum samt Inhalt; ein Mitglied tritt aus.
+- **`POST /v1/raeume/<id>/einladungen`** `{"slot": "<64 hex>", "recht", "paket", "mitgliedPaket", "gueltigSekunden": 30…604800}`: nur Eigentümer. Höchstens 5 offene Einladungen je Raum.
+- **`POST /v1/einladungen/<slot>/annehmen`** `{"antwort"}` → `{"raum", "recht", "paket"}`:
+  - Genau einmal annehmbar; danach ist das Konto Mitglied mit dem Recht aus der Einladung, und sein `paket` ist das `mitgliedPaket`.
+  - Fehler: `404` (unbekannt oder abgelaufen), `409` (gehört schon dazu).
+  - Pro IP begrenzt.
+- **`PUT /v1/raeume/<id>/mitglieder/<konto>`** `{"recht"?, "paket"?}` und **`DELETE …`:** nur Eigentümer. Entfernte Mitglieder bekommen sofort nichts mehr.
+- **Inhalte:** `GET`/`POST /v1/raeume/<id>/objekte` und `…/bloecke/…` funktionieren wie die Endpunkte des Kontos.
+  - Schreiben dürfen Eigentümer und Mitglieder mit `schreiben`, sonst `403`. Aufräumen der Blöcke darf nur der Eigentümer.
+  - Konten ohne Zugang bekommen `404`, als gäbe es den Raum nicht.
+- **Speicherplatz:** Was im Raum liegt, zählt beim Eigentümer.
+
 ## Kompatibilität und Migration
 
-- **Datenbank:** Das Schema der Server-Datenbank steht in `PRAGMA user_version` (aktuell 2; 2 ergänzt die Blöcke). Migrationen laufen beim Start in einer Transaktion. Eine neuere Datenbank lehnt ein älterer Server ab.
+- **Datenbank:** Das Schema der Server-Datenbank steht in `PRAGMA user_version` (aktuell 3; 2 ergänzt die Blöcke, 3 die Räume). Migrationen laufen beim Start in einer Transaktion. Eine neuere Datenbank lehnt ein älterer Server ab.
 - **Schemaversion der Inhalte:** Sie steht im verschlüsselten Umschlag und ist damit Sache der Apps. Eine App spielt nichts aus einer neueren Schemaversion ein und meldet dann „App aktualisieren“.

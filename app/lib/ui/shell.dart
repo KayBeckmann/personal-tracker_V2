@@ -13,6 +13,7 @@ import 'finanzen/haushaltsbuch.dart';
 import 'navigation.dart';
 import 'notizen/notizen.dart';
 import 'termine/termine.dart';
+import 'raeume/freigaben.dart';
 import 'vault/vault.dart';
 import 'thema.dart';
 import 'sync/sync.dart';
@@ -66,6 +67,7 @@ class _ShellState extends ConsumerState<Shell> {
       Bereich.notizen => const NotizenSeite(),
       Bereich.finanzen => const HaushaltsbuchSeite(),
       Bereich.vault => const VaultSeite(),
+      Bereich.freigaben => const FreigabenSeite(),
       Bereich.einstellungen => const EinstellungenSeite(),
     };
 
@@ -127,7 +129,10 @@ class _ShellState extends ConsumerState<Shell> {
 String _markenUnter(WidgetRef ref) => ref.watch(syncProvider).verbunden ? 'V2 · SYNC' : 'V2 · LOKAL';
 
 List<Bereich> _bereiche(WidgetRef ref) =>
-    sichtbareBereiche(vault: ref.watch(syncProvider).verbunden || !ref.watch(vaultProvider).leer);
+    sichtbareBereiche(
+      vault: ref.watch(syncProvider).verbunden || !ref.watch(vaultProvider).leer,
+      freigaben: ref.watch(syncProvider).verbunden || ref.watch(bestandProvider).raeume.isNotEmpty,
+    );
 
 class _Seitenleiste extends ConsumerWidget {
   const _Seitenleiste({required this.aktiv});

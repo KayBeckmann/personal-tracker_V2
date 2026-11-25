@@ -3,4 +3,4 @@
 library;
 
 export 'src/api.dart' show Konfiguration, apiVersion, serverVersion, syncHandler;
-export 'src/speicher.dart' show Speicher, SpeicherFehler, dbSchema;
+export 'src/speicher.dart' show Ort, Speicher, SpeicherFehler, dbSchema;

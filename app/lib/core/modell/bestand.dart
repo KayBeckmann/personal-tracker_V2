@@ -2,6 +2,7 @@ import 'aufgabe.dart';
 import 'finanzen.dart';
 import 'konflikt.dart';
 import 'notiz.dart';
+import '../raeume/raum.dart';
 import 'termin.dart';
 
 /// Entschlüsselter Datenbestand im Speicher (nur solange entsperrt).
@@ -14,6 +15,7 @@ class Bestand {
     this.buchungen = const {},
     this.plaene = const {},
     this.konflikte = const {},
+    this.raeume = const {},
     this.einstellungen = const Einstellungen(),
   });
 
@@ -26,6 +28,9 @@ class Bestand {
 
   /// Abweichende Fassungen aus dem Abgleich (siehe [Konflikt]).
   final Map<String, Konflikt> konflikte;
+
+  /// Geteilte Kalender, Aufgabenlisten und Vault-Ordner (eigene und fremde).
+  final Map<String, Raum> raeume;
   final Einstellungen einstellungen;
 
   Bestand kopie({
@@ -36,6 +41,7 @@ class Bestand {
     Map<String, Buchung>? buchungen,
     Map<String, Plan>? plaene,
     Map<String, Konflikt>? konflikte,
+    Map<String, Raum>? raeume,
     Einstellungen? einstellungen,
   }) =>
       Bestand(
@@ -46,6 +52,7 @@ class Bestand {
         buchungen: buchungen ?? this.buchungen,
         plaene: plaene ?? this.plaene,
         konflikte: konflikte ?? this.konflikte,
+        raeume: raeume ?? this.raeume,
         einstellungen: einstellungen ?? this.einstellungen,
       );
 
@@ -72,6 +79,9 @@ class Bestand {
       final art = a.art.index.compareTo(b.art.index);
       return art != 0 ? art : a.name.toLowerCase().compareTo(b.name.toLowerCase());
     });
+
+  /// Räume einer Art, nach Name.
+  List<Raum> raeumeDerArt(RaumArt art) => raeume.values.where((r) => r.art == art).toList()..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
   int get anzahlDatensaetze =>
       termine.length + aufgaben.length + notizen.length + konten.length + buchungen.length + plaene.length;

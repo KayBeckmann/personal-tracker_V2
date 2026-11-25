@@ -95,17 +95,20 @@ export default class PersonalTrackerSync extends Plugin {
       const schluessel = this.app.secretStorage.getSecret(`ptv2-schluessel-${this.vaultKennung}`);
       if (!token || !schluessel) return leererZustand();
       z.verbindung = { ...z.verbindung, token, schluessel };
+      // Raumschlüssel liegen wie Token und Kontoschlüssel in der Schlüsselablage.
+      z.raeume = JSON.parse(this.app.secretStorage.getSecret(`ptv2-raeume-${this.vaultKennung}`) ?? '{}');
     }
     return z;
   }
 
   zustandSpeichern(): void {
-    const { verbindung, ...rest } = this.z;
+    const { verbindung, raeume, ...rest } = this.z;
     const ohne = verbindung ? { ...verbindung, token: '', schluessel: '' } : null;
-    this.app.saveLocalStorage('ptv2-sync-zustand', JSON.stringify({ ...rest, verbindung: ohne }));
+    this.app.saveLocalStorage('ptv2-sync-zustand', JSON.stringify({ ...rest, raeume: {}, verbindung: ohne }));
     if (verbindung) {
       this.app.secretStorage.setSecret(`ptv2-token-${this.vaultKennung}`, verbindung.token);
       this.app.secretStorage.setSecret(`ptv2-schluessel-${this.vaultKennung}`, verbindung.schluessel);
+      this.app.secretStorage.setSecret(`ptv2-raeume-${this.vaultKennung}`, JSON.stringify(raeume));
     }
   }
 
@@ -169,6 +172,10 @@ export default class PersonalTrackerSync extends Plugin {
       this.letzter = await this.abgleich.abgleichen();
       this.fehler = undefined;
       const b = this.letzter;
+      if (b.nurLesen.length > 0) {
+        new Notice(`Personal Tracker Sync: Änderungen in einem nur lesbaren geteilten Ordner wurden nicht hochgeladen, sondern nach „${b.nurLesen[0]}“ verschoben.`, 12000);
+      }
+      if (b.raeumeEntfernt.length > 0) new Notice(`Personal Tracker Sync: Kein Zugang mehr zu „${b.raeumeEntfernt.join('“, „')}“.`, 10000);
       if (b.konflikte.length > 0) new Notice(`Personal Tracker Sync: ${b.konflikte.length} Konfliktkopie(n) angelegt, z. B. „${b.konflikte[0]}“.`, 10000);
       if (manuell) new Notice(`Abgeglichen: ${b.geholt} geholt, ${b.gesendet} gesendet.`);
     } catch (e) {
@@ -275,6 +282,7 @@ export default class PersonalTrackerSync extends Plugin {
     Object.assign(this.z, leererZustand());
     this.app.secretStorage.setSecret(`ptv2-token-${this.vaultKennung}`, '');
     this.app.secretStorage.setSecret(`ptv2-schluessel-${this.vaultKennung}`, '');
+    this.app.secretStorage.setSecret(`ptv2-raeume-${this.vaultKennung}`, '');
     this.zustandSpeichern();
     this.letzter = undefined;
     this.fehler = undefined;
@@ -320,6 +328,7 @@ class VorschauModal extends Modal {
     const mib = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MiB`;
     liste(el, `Hochladen (${mib(v.bytesHoch)})`, v.hochladen);
     liste(el, 'Vom Server holen', v.herunterladen);
+    liste(el, 'In geteilten Ordnern (gehen an die jeweilige Freigabe)', v.geteilt);
     liste(el, 'Auf beiden Seiten gleich', v.gleich);
     liste(el, 'Gleicher Pfad, anderer Inhalt (deine Fassung bleibt als Konfliktkopie)', v.konflikte, true);
     liste(el, 'Gesperrt wegen möglicher Secrets (bleiben lokal, bis du sie einzeln freigibst)', v.gesperrt.map((g) => `${g.pfad} – ${trefferText(g.treffer)}`), true);
@@ -453,6 +462,15 @@ class EinstellungenSeite extends PluginSettingTab {
                 this.display();
               }),
             );
+        }
+      }
+      const raeume = plugin.abgleich.raeume;
+      if (raeume.length > 0) {
+        el.createEl('h3', { text: 'Geteilte Ordner' });
+        el.createEl('p', { text: 'Verwaltet werden Freigaben in der Tracker-App (Freigaben). Alles unter diesen Ordnern gehört zur jeweiligen Freigabe.' });
+        for (const r of raeume) {
+          const recht = r.eigen ? 'von dir geteilt' : r.schreibbar ? `von ${r.j.von ?? '?'}, lesen und schreiben` : `von ${r.j.von ?? '?'}, nur lesen`;
+          new Setting(el).setName(r.ordner ?? r.j.name).setDesc(`„${r.j.name}“ – ${recht}`);
         }
       }
       if (s && s.zuGross.length > 0) {

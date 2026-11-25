@@ -109,6 +109,64 @@ class SyncStand {
   Future<void> setzeBasis(Map<String, int> b, {DatabaseClient? tx}) =>
       ablage.schreiben(dek, 'sync', 'basis', {'id': 'basis', 'revisionen': b}, tx: tx);
 
+  /// Datensätze, die in einem geteilten Raum liegen: Schlüssel → Raum-ID.
+  /// Fehlt ein Schlüssel, liegt der Datensatz (falls schon gesendet) im
+  /// eigenen Konto. [basis] gilt jeweils für diesen Ort.
+  Future<Map<String, String>> orte({DatabaseClient? tx}) async {
+    final j = await ablage.lesenEinzeln(dek, 'sync', 'orte', tx: tx);
+    return ((j?['orte'] as Map?) ?? const {}).map((k, v) => MapEntry('$k', v as String));
+  }
+
+  Future<void> setzeOrte(Map<String, String> o, {DatabaseClient? tx}) => ablage.schreiben(dek, 'sync', 'orte', {'id': 'orte', 'orte': o}, tx: tx);
+
+  /// Abrufstand je Raum (wie [Verbindung.seq]/[Verbindung.bekannt]).
+  Future<Map<String, ({int seq, int bekannt, int info})>> raumStaende({DatabaseClient? tx}) async {
+    final j = await ablage.lesenEinzeln(dek, 'sync', 'raum_staende', tx: tx);
+    return {
+      for (final e in ((j?['raeume'] as Map?) ?? const {}).entries)
+        '${e.key}': (seq: (e.value as Map)['seq'] as int, bekannt: (e.value as Map)['bekannt'] as int, info: ((e.value as Map)['info'] as int?) ?? 0),
+    };
+  }
+
+  Future<void> setzeRaumStaende(Map<String, ({int seq, int bekannt, int info})> m, {DatabaseClient? tx}) => ablage.schreiben(
+        dek,
+        'sync',
+        'raum_staende',
+        {
+          'id': 'raum_staende',
+          'raeume': {for (final e in m.entries) e.key: {'seq': e.value.seq, 'bekannt': e.value.bekannt, 'info': e.value.info}},
+        },
+        tx: tx,
+      );
+
+  /// Raum-Objekte, die einen Datensatz betreffen, der hier noch an einem
+  /// anderen Ort liegt (siehe [SyncMotor]): Schlüssel → Raum, Revision,
+  /// Objekt-ID und Geheimtext. Sie werden eingespielt, sobald der
+  /// Datensatz dort weg ist.
+  Future<Map<String, ({String raum, int seq, String id, String daten})>> zurueckgestellt({DatabaseClient? tx}) async {
+    final j = await ablage.lesenEinzeln(dek, 'sync', 'zurueckgestellt', tx: tx);
+    return {
+      for (final e in ((j?['objekte'] as Map?) ?? const {}).entries)
+        '${e.key}': (
+          raum: (e.value as Map)['raum'] as String,
+          seq: (e.value as Map)['seq'] as int,
+          id: (e.value as Map)['id'] as String,
+          daten: (e.value as Map)['daten'] as String,
+        ),
+    };
+  }
+
+  Future<void> setzeZurueckgestellt(Map<String, ({String raum, int seq, String id, String daten})> m, {DatabaseClient? tx}) => ablage.schreiben(
+        dek,
+        'sync',
+        'zurueckgestellt',
+        {
+          'id': 'zurueckgestellt',
+          'objekte': {for (final e in m.entries) e.key: {'raum': e.value.raum, 'seq': e.value.seq, 'id': e.value.id, 'daten': e.value.daten}},
+        },
+        tx: tx,
+      );
+
   /// Ausstehende Änderungen: Schlüssel → Änderungs-ID.
   Future<Map<String, String>> ausgang({DatabaseClient? tx}) async => {
         for (final j in await ablage.lesen(dek, 'sync_ausgang', tx: tx)) j['id'] as String: j['aenderung'] as String,

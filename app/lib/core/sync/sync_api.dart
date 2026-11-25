@@ -25,6 +25,9 @@ enum SyncFehlerArt {
 
   /// Gibt es schon (z. B. Konto zu diesem Recovery-Schlüssel).
   vorhanden,
+
+  /// Recht fehlt (z. B. Schreiben in einer Freigabe mit Leserecht).
+  verboten,
   server,
 }
 
@@ -95,6 +98,7 @@ class SyncApi {
     throw SyncFehler(
       switch (antwort.statusCode) {
         401 => SyncFehlerArt.anmeldung,
+        403 => SyncFehlerArt.verboten,
         404 => SyncFehlerArt.nichtGefunden,
         409 => SyncFehlerArt.vorhanden,
         _ => SyncFehlerArt.server,
@@ -199,8 +203,8 @@ class SyncApi {
     return (konto: j['konto'] as String, paket: j['paket'] as String, geraet: j['geraet'] as String, token: j['token'] as String);
   }
 
-  Future<({List<({String id, int seq, String daten})> objekte, int bis, bool mehr})> abrufen(int seit, {int? max}) async {
-    final j = await _anfrage('GET', '/v1/objekte', query: {'seit': '$seit', if (max != null) 'max': '$max'});
+  Future<({List<({String id, int seq, String daten})> objekte, int bis, bool mehr})> abrufen(int seit, {int? max, String? raum}) async {
+    final j = await _anfrage('GET', '${_ort(raum)}/objekte', query: {'seit': '$seit', if (max != null) 'max': '$max'});
     return (
       objekte: [
         for (final o in (j['objekte'] as List).cast<Map<String, dynamic>>())
@@ -211,33 +215,65 @@ class SyncApi {
     );
   }
 
-  Future<List<({String id, bool ok, int seq})>> schreiben(List<({String id, int basis, String aenderung, String daten})> aenderungen) async {
-    final j = await _anfrage('POST', '/v1/objekte', body: {
+  /// Bei einem Konflikt liefert der Server seine Fassung mit ([daten]).
+  Future<List<({String id, bool ok, int seq, String? daten})>> schreiben(List<({String id, int basis, String aenderung, String daten})> aenderungen, {String? raum}) async {
+    final j = await _anfrage('POST', '${_ort(raum)}/objekte', body: {
       'aenderungen': [
         for (final a in aenderungen) {'id': a.id, 'basis': a.basis, 'aenderung': a.aenderung, 'daten': a.daten},
       ],
     });
     return [
       for (final e in (j['ergebnisse'] as List).cast<Map<String, dynamic>>())
-        (id: e['id'] as String, ok: e['status'] == 'ok', seq: e['seq'] as int),
+        (id: e['id'] as String, ok: e['status'] == 'ok', seq: e['seq'] as int, daten: e['daten'] as String?),
     ];
   }
 
   // Blöcke des Vault-Syncs (Server ab 1.1.0)
 
-  Future<void> blockSchreiben(String id, Uint8List daten) => _binaer('PUT', '/v1/bloecke/$id', body: daten);
+  Future<void> blockSchreiben(String id, Uint8List daten, {String? raum}) => _binaer('PUT', '${_ort(raum)}/bloecke/$id', body: daten);
 
-  Future<Uint8List> blockLesen(String id) async => (await _binaer('GET', '/v1/bloecke/$id')).bodyBytes;
+  Future<Uint8List> blockLesen(String id, {String? raum}) async => (await _binaer('GET', '${_ort(raum)}/bloecke/$id')).bodyBytes;
 
-  Future<List<String>> bloeckeFehlend(List<String> ids) async {
+  Future<List<String>> bloeckeFehlend(List<String> ids, {String? raum}) async {
     final fehlend = <String>[];
     for (var i = 0; i < ids.length; i += 5000) {
-      final j = await _anfrage('POST', '/v1/bloecke/fehlend', body: {'ids': ids.sublist(i, i + 5000 > ids.length ? ids.length : i + 5000)});
+      final j = await _anfrage('POST', '${_ort(raum)}/bloecke/fehlend', body: {'ids': ids.sublist(i, i + 5000 > ids.length ? ids.length : i + 5000)});
       fehlend.addAll((j['fehlend'] as List).cast<String>());
     }
     return fehlend;
   }
 
-  Future<int> bloeckeAufraeumen(List<String> behalten) async =>
-      (await _anfrage('POST', '/v1/bloecke/aufraeumen', body: {'behalten': behalten}))['geloescht'] as int;
+  Future<int> bloeckeAufraeumen(List<String> behalten, {String? raum}) async =>
+      (await _anfrage('POST', '${_ort(raum)}/bloecke/aufraeumen', body: {'behalten': behalten}))['geloescht'] as int;
+
+  /// Pfad der Objekte und Blöcke: eigenes Konto oder geteilter Raum.
+  static String _ort(String? raum) => raum == null ? '/v1' : '/v1/raeume/$raum';
+
+  // Geteilte Räume (Server ab 1.2.0)
+
+  Future<List<Map<String, dynamic>>> raeume() async => ((await _anfrage('GET', '/v1/raeume'))['raeume'] as List).cast<Map<String, dynamic>>();
+
+  Future<void> raumAnlegen(String id) => _anfrage('POST', '/v1/raeume', body: {'id': id});
+
+  /// Eigentümer: Raum löschen; Mitglied: austreten.
+  Future<void> raumVerlassen(String id) => _anfrage('DELETE', '/v1/raeume/$id');
+
+  Future<void> einladungAnlegen(String raum, {required String slot, required String recht, required String paket, required String mitgliedPaket, required Duration gueltig}) =>
+      _anfrage('POST', '/v1/raeume/$raum/einladungen', body: {
+        'slot': slot,
+        'recht': recht,
+        'paket': paket,
+        'mitgliedPaket': mitgliedPaket,
+        'gueltigSekunden': gueltig.inSeconds,
+      });
+
+  Future<({String raum, String recht, String paket})> einladungAnnehmen(String slot, String antwort) async {
+    final j = await _anfrage('POST', '/v1/einladungen/$slot/annehmen', body: {'antwort': antwort});
+    return (raum: j['raum'] as String, recht: j['recht'] as String, paket: j['paket'] as String);
+  }
+
+  Future<void> mitgliedAendern(String raum, String konto, {String? recht, String? paket}) =>
+      _anfrage('PUT', '/v1/raeume/$raum/mitglieder/$konto', body: {'recht': ?recht, 'paket': ?paket});
+
+  Future<void> mitgliedEntfernen(String raum, String konto) => _anfrage('DELETE', '/v1/raeume/$raum/mitglieder/$konto');
 }

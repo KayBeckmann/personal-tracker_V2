@@ -102,6 +102,10 @@ class _VaultSeiteState extends ConsumerState<VaultSeite> {
     final sync = ref.watch(syncProvider);
     final f = context.farben;
     final suche = _suche.text.trim().toLowerCase();
+    final geteilt = {
+      for (final r in ref.watch(bestandProvider).raeume.values)
+        if (r.ordner != null) r.ordner!: r.eigen ? 'geteilt als „${r.name}“' : 'von ${r.von}${r.schreibbar ? '' : ' · nur lesen'}',
+    };
     final alle = v.dateien.where((d) => _sichtbar(d.pfad)).toList();
 
     final List<Widget> zeilen;
@@ -135,8 +139,9 @@ class _VaultSeiteState extends ConsumerState<VaultSeite> {
         for (final o in (ordner.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()))))
           Zeile(
             key: Key('vault-ordner-$o'),
-            vorne: Icon(Icons.folder_outlined, size: 20, color: f.gedaempft),
+            vorne: Icon(geteilt.containsKey('$praefix$o') ? Icons.folder_shared_outlined : Icons.folder_outlined, size: 20, color: f.gedaempft),
             titel: o,
+            unter: geteilt['$praefix$o'],
             onTap: () => setState(() => _ordner = '$praefix$o'),
           ),
         for (final d in dateien) _DateiZeile(datei: d),
@@ -305,6 +310,7 @@ class _VaultDateiSeiteState extends ConsumerState<VaultDateiSeite> {
   }
 
   bool get _geaendert => _d.istMarkdown && _inhalt != null && _text.text != _geladen;
+  bool get _nurLesen => ref.read(vaultProvider.notifier).nurLesen(_d.pfad);
 
   Future<void> _speichern() async {
     try {
@@ -383,6 +389,7 @@ class _VaultDateiSeiteState extends ConsumerState<VaultDateiSeite> {
       final editor = TextField(
         key: const Key('vault-text'),
         controller: _text,
+        readOnly: _nurLesen,
         maxLines: null,
         minLines: 16,
         keyboardType: TextInputType.multiline,
@@ -446,7 +453,9 @@ class _VaultDateiSeiteState extends ConsumerState<VaultDateiSeite> {
           backgroundColor: f.flaeche,
           surfaceTintColor: Colors.transparent,
           title: Text(_d.name, overflow: TextOverflow.ellipsis),
-          actions: [
+          actions: _nurLesen
+              ? [const Padding(padding: EdgeInsets.only(right: 16), child: Center(child: Marke('nur lesen')))]
+              : [
             IconButton(key: const Key('vault-umbenennen'), tooltip: 'Umbenennen oder verschieben', onPressed: _umbenennen, icon: const Icon(Icons.drive_file_move_outline)),
             if (b != null && !_d.istMarkdown)
               IconButton(tooltip: 'Speichern unter', onPressed: _herunterladen, icon: const Icon(Icons.download_outlined)),

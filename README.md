@@ -1,6 +1,6 @@
 # Personal Tracker V2
 
-**Status: Meilensteine M1–M4 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) und [obsidian/](obsidian/README.md) (Plugin). Freigaben an andere Personen und ein gehostetes Angebot gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
+**Status: Meilensteine M1–M5 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) und [obsidian/](obsidian/README.md) (Plugin). Einkaufslisten, Preiskatalog, Agenten-Zugang und ein gehostetes Angebot gibt es noch nicht (folgende Meilensteine). Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
 
 ## Produktidee
 
@@ -47,6 +47,18 @@ Weitere besprochene Anforderungen sind gezielte private Datei- und Ordnerfreigab
   - Anlegen, Umbenennen, Löschen und ZIP-Export.
 - **Dateigrößen:** Große Dateien liegen in verschlüsselten Blöcken (Server 1.1.0, DB-Schema 2). Die Grenze ist einstellbar, Standard 100 MiB.
 - **Gemeinsamer Vertrag:** [protokoll/VAULT.md](protokoll/VAULT.md). Testvektoren halten Dart und TypeScript gleich.
+
+## Stand M5 (umgesetzt, Abnahme auf Geräten offen)
+
+- **Freigaben:** Kalender, Aufgabenlisten und Vault-Ordner lassen sich gezielt an bestimmte Personen teilen, mit Lese- oder Schreibrecht. Alles ist privat, bis es bewusst geteilt wird.
+- **Einladung:** per Einmal-Code, der persönlich weitergegeben wird. Der Server kann keine fremden Schlüssel unterschieben.
+- **Ordnerfreigaben:** Sie gelten für alles darunter, ohne Ausnahmen. Wer etwas in einen geteilten Ordner verschiebt oder einem geteilten Kalender zuordnet, teilt es; Herausnehmen macht es wieder privat.
+- **Rechte:** Der Server prüft auf jedem Pfad. Einträge mit Leserecht sind in der App gesperrt; im Obsidian-Plugin werden lokale Änderungen daran als private Kopie unter „Eigene Änderungen“ beiseitegelegt.
+- **Entfernen:**
+  - Das Mitglied bekommt sofort nichts mehr, und ein neuer Schlüssel gilt für alles Weitere.
+  - Seine noch nicht gesendeten Änderungen bleiben ihm privat erhalten.
+  - Schon Geladenes lässt sich nicht zurückholen.
+- **Server 1.2.0:** DB-Schema 3. Vertrag in [server/API.md](server/API.md), Protokoll in [protokoll/RAEUME.md](protokoll/RAEUME.md).
 
 ## Mock-ups
 

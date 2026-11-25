@@ -114,6 +114,8 @@ void main() {
       b.c.listen(vaultProvider, (_, _) {});
       await b.sync.neuKoppeln(server: TestServer.adresse, code: Kopplungscode.lesen(code.anzeigen())!, passwort: 'passwort-b', geraetName: 'Laptop');
       await b.abgleichen();
+      await a.ruhig();
+      await b.ruhig();
       return (a, b);
     }
 
