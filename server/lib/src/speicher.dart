@@ -15,7 +15,8 @@ import 'package:sqlite3/sqlite3.dart';
 /// - 1: Konten, Geräte, Objekte, Kopplungen (M3)
 /// - 2: Blöcke für Dateiinhalte des Vault-Syncs (M4)
 /// - 3: geteilte Räume mit Mitgliedern, Einladungen, Objekten und Blöcken (M5)
-const dbSchema = 3;
+/// - 4: föderierter Preiskatalog (M7)
+const dbSchema = 4;
 
 final _zufall = Random.secure();
 
@@ -194,6 +195,32 @@ class Speicher {
         daten BLOB NOT NULL,
         erstellt INTEGER NOT NULL,
         PRIMARY KEY (raum, id)
+      );
+    '''),
+    3: (db) => db.execute('''
+      CREATE TABLE katalog_konten (
+        konto TEXT PRIMARY KEY REFERENCES konten(id) ON DELETE CASCADE,
+        pseudonym TEXT NOT NULL UNIQUE,
+        gesperrt INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE katalog (
+        instanz TEXT NOT NULL,
+        id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        typ TEXT NOT NULL,
+        autor TEXT NOT NULL,
+        daten TEXT NOT NULL,
+        empfangen INTEGER NOT NULL,
+        PRIMARY KEY (instanz, id)
+      );
+      CREATE INDEX katalog_feed ON katalog (instanz, seq);
+      CREATE TABLE katalog_peers (
+        url TEXT PRIMARY KEY,
+        seit INTEGER NOT NULL DEFAULT 0,
+        letzter INTEGER,
+        fehler TEXT,
+        gesperrt INTEGER NOT NULL DEFAULT 0,
+        entdeckt INTEGER NOT NULL
       );
     '''),
   };

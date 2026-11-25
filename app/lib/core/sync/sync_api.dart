@@ -276,4 +276,16 @@ class SyncApi {
       _anfrage('PUT', '/v1/raeume/$raum/mitglieder/$konto', body: {'recht': ?recht, 'paket': ?paket});
 
   Future<void> mitgliedEntfernen(String raum, String konto) => _anfrage('DELETE', '/v1/raeume/$raum/mitglieder/$konto');
+
+  // Öffentlicher Preiskatalog (Server ab 1.3.0)
+
+  Future<Map<String, dynamic>> katalogIch() => _anfrage('GET', '/v1/katalog/ich');
+
+  Future<Map<String, dynamic>> katalogBeitrag(Map<String, dynamic> beitrag) => _anfrage('POST', '/v1/katalog/beitraege', body: beitrag);
+
+  Future<List<Map<String, dynamic>>> katalogPreise({String? artikel, String? kette, String? region}) async =>
+      ((await _anfrage('GET', '/v1/katalog/preise', query: {'artikel': ?artikel, 'kette': ?kette, 'region': ?region}))['preise'] as List)
+          .cast<Map<String, dynamic>>();
+
+  Future<List<Map<String, dynamic>>> katalogMeine() async => ((await _anfrage('GET', '/v1/katalog/meine'))['beitraege'] as List).cast<Map<String, dynamic>>();
 }

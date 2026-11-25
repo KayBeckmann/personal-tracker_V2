@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/dienste/standort.dart';
 import '../../core/einkauf/schaetzung.dart';
+import '../../core/katalog/katalog_dienst.dart';
 import '../../core/modell/datum.dart';
 import '../../core/modell/einkauf.dart';
 import '../../core/raeume/raum.dart';
 import '../../core/sitzung.dart';
+import '../../core/sync/sync_api.dart';
+import '../../core/sync/sync_dienst.dart';
 import '../bausteine.dart';
 import '../format.dart';
 import '../raeume/raum_auswahl.dart';
@@ -86,6 +89,7 @@ class EinkaufSeite extends ConsumerWidget {
                 ),
         ),
         const SizedBox(height: 16),
+        if (ref.watch(syncProvider).verbunden) ...[const KatalogKarte(), const SizedBox(height: 16)],
         Karte(
           titel: 'Filialen',
           child: filialen.isEmpty
@@ -463,6 +467,8 @@ class _PostenFormularState extends ConsumerState<_PostenFormular> {
                   },
                   child: const Text('Löschen'),
                 ),
+              if (b.einstellungen.katalogLesen && ref.watch(syncProvider).verbunden && p != null)
+                TextButton(key: const Key('posten-katalog'), onPressed: () => katalogZeigen(context, ref, widget.liste, p), child: const Text('Im Katalog …')),
               OutlinedButton(key: const Key('posten-preis'), onPressed: _preis, child: const Text('Preis erfassen …')),
               FilledButton(key: const Key('posten-speichern'), onPressed: _speichern, child: const Text('Speichern')),
             ],
@@ -490,6 +496,7 @@ class _PreisFormularState extends ConsumerState<_PreisFormular> {
   late String? _filiale = widget.liste.filialeId;
   DateTime _datum = tagVon(DateTime.now());
   String? _fehler;
+  bool _oeffentlich = false;
 
   @override
   void dispose() {
@@ -522,7 +529,36 @@ class _PreisFormularState extends ConsumerState<_PreisFormular> {
       setState(() => _fehler = 'Bitte Filiale, Preis (z. B. 1,29) und Packungsgröße angeben.');
       return;
     }
+    final f = ref.read(bestandProvider).filialen[p.filialeId]!;
+    Map<String, dynamic>? beitrag;
+    if (_oeffentlich) {
+      try {
+        beitrag = KatalogDienst.beitragFuer(p, f);
+      } on KatalogFehler catch (e) {
+        setState(() => _fehler = e.meldung);
+        return;
+      }
+      if (!await bestaetigen(
+        context,
+        titel: 'Öffentlich veröffentlichen?',
+        text: 'Diese Angaben werden für alle Teilnehmenden lesbar, auch auf anderen Servern, unter einem Pseudonym:\n\n'
+            '${p.artikel}${p.variante == null ? '' : ' (${p.variante})'} · ${mengeText(p.packungsMenge, p.packungsEinheit)} · '
+            '${f.kette}, ${f.name}, ${beitrag['region']} · ${euro(p.packungsPreisCent)} · ${datumKurz(p.datum)}\n\n'
+            'Nicht veröffentlicht werden Position, Listen, Einkäufe und dein Name. Zurückziehen geht jederzeit.',
+        ja: 'Veröffentlichen',
+        gefaehrlich: false,
+      )) {
+        return;
+      }
+    }
     await ref.read(sitzungProvider.notifier).speicherePreis(p);
+    if (_oeffentlich) {
+      try {
+        await ref.read(katalogProvider).veroeffentlichen(p, f);
+      } on SyncFehler catch (e) {
+        if (mounted) meldung(context, 'Gespeichert, aber nicht veröffentlicht: ${e.meldung}', fehler: true);
+      }
+    }
     if (mounted) Navigator.pop(context);
   }
 
@@ -593,6 +629,15 @@ class _PreisFormularState extends ConsumerState<_PreisFormular> {
           ),
           if (e?.grundpreisCent != null) Text('Grundpreis ${euro(e!.grundpreisCent!)} je ${e.packungsEinheit.grundpreisEinheit}', key: const Key('preis-grundpreis')),
           if (filialen.isEmpty) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Lege zuerst eine Filiale an.')),
+          if (b.einstellungen.katalogBeitragen && ref.watch(syncProvider).verbunden)
+            CheckboxListTile(
+              key: const Key('preis-oeffentlich'),
+              contentPadding: EdgeInsets.zero,
+              value: _oeffentlich,
+              onChanged: (v) => setState(() => _oeffentlich = v ?? false),
+              title: const Text('Auch im öffentlichen Katalog veröffentlichen'),
+              subtitle: const Text('Für alle Teilnehmenden lesbar, unter einem Pseudonym.'),
+            ),
           if (_fehler != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_fehler!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
           const SizedBox(height: 18),
           Wrap(
@@ -821,3 +866,177 @@ class _AbschlussFormularState extends ConsumerState<_AbschlussFormular> {
     );
   }
 }
+
+/// Einstellungen und eigene Beiträge des öffentlichen Preiskatalogs.
+class KatalogKarte extends ConsumerWidget {
+  const KatalogKarte({super.key});
+
+  Future<void> _meine(BuildContext context, WidgetRef ref) async {
+    final k = ref.read(katalogProvider);
+    List<Map<String, dynamic>> liste;
+    ({String pseudonym, String instanz, bool foederiert}) ich;
+    try {
+      liste = await k.meine();
+      ich = await k.ich();
+    } on SyncFehler catch (e) {
+      if (context.mounted) meldung(context, e.meldung, fehler: true);
+      return;
+    }
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Meine Katalogbeiträge'),
+          content: SizedBox(
+            width: 480,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Du erscheinst als ${ich.pseudonym}@${ich.instanz}.${ich.foederiert ? '' : ' Dieser Server teilt den Katalog nicht mit anderen.'}'),
+                const SizedBox(height: 10),
+                if (liste.isEmpty) const Text('Noch nichts veröffentlicht.'),
+                for (final b in liste)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(b['typ'] == 'preis' ? '${b['artikel']} · ${euro(b['preisCent'] as int)}' : 'Bestätigung'),
+                    subtitle: Text(b['typ'] == 'preis' ? '${b['kette']}, ${b['filiale']} · ${b['tag']}' : '${(b['ziel'] as Map)['instanz']}'),
+                    trailing: TextButton(
+                      key: Key('zurueckziehen-${b['id']}'),
+                      onPressed: () async {
+                        await k.zurueckziehen(ich.instanz, b['id'] as String);
+                        setState(() => liste = [...liste]..remove(b));
+                      },
+                      child: const Text('Zurückziehen'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fertig'))],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final e = ref.watch(bestandProvider).einstellungen;
+    final s = ref.read(sitzungProvider.notifier);
+    return Karte(
+      key: const Key('karte-katalog'),
+      titel: 'Öffentlicher Preiskatalog',
+      marke: e.katalogLesen || e.katalogBeitragen ? 'an' : 'aus',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Freiwillig und getrennt von deinem verschlüsselten Sync: Teilnehmende Server teilen Preise. Ein neuer Preis gilt erst als bestätigt, '
+            'wenn eine zweite Person ihn bestätigt. Was du veröffentlichst, ist öffentlich lesbar (Artikel, Packung, Kette, Filiale, Region, Preis, Tag) – '
+            'nie Position, Listen, Einkäufe oder dein Name.',
+            style: TextStyle(fontSize: 13),
+          ),
+          SwitchListTile(
+            key: const Key('katalog-lesen'),
+            contentPadding: EdgeInsets.zero,
+            value: e.katalogLesen,
+            onChanged: (v) => s.speichereEinstellungen(e.kopie(katalogLesen: v)),
+            title: const Text('Preise anderer lesen'),
+          ),
+          SwitchListTile(
+            key: const Key('katalog-beitragen'),
+            contentPadding: EdgeInsets.zero,
+            value: e.katalogBeitragen,
+            onChanged: (v) => s.speichereEinstellungen(e.kopie(katalogBeitragen: v)),
+            title: const Text('Eigene Preise veröffentlichen (je Preis einzeln)'),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(key: const Key('katalog-meine'), onPressed: () => _meine(context, ref), child: const Text('Meine Beiträge …')),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Katalogpreise für einen Posten: bestätigte lassen sich übernehmen,
+/// fremde bestätigen.
+Future<void> katalogZeigen(BuildContext context, WidgetRef ref, Einkaufsliste l, Posten p) async {
+  final b = ref.read(bestandProvider);
+  final filiale = b.filialen[l.filialeId];
+  List<KatalogPreis> treffer;
+  try {
+    treffer = await ref.read(katalogProvider).suchen(p.name, filiale: filiale?.region == null ? null : filiale);
+  } on KatalogFehler catch (e) {
+    if (context.mounted) meldung(context, e.meldung, fehler: true);
+    return;
+  } on SyncFehler catch (e) {
+    if (context.mounted) meldung(context, e.meldung, fehler: true);
+    return;
+  }
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => AlertDialog(
+        title: Text('Katalog: ${p.name}'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (treffer.isEmpty) const Text('Keine Preise im Katalog.'),
+                for (final k in treffer)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${euro(k.preisCent)} für ${mengeText(k.packungsMenge, k.einheit)}${k.variante == null ? '' : ' (${k.variante})'}',
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text('${k.kette}, ${k.filiale} · ${k.region} · ${datumKurz(k.tag)}${k.veraltet ? ' · älter als 90 Tage' : ''}'),
+                        Text(
+                          k.bestaetigt ? 'Bestätigt von ${k.bestaetigungen} ${k.bestaetigungen == 1 ? 'weiteren Person' : 'weiteren Personen'}' : 'Unbestätigt – zählt nicht in Schätzungen',
+                          key: Key('katalog-status-${k.id}'),
+                        ),
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            if (k.bestaetigt)
+                              TextButton(
+                                key: Key('katalog-uebernehmen-${k.id}'),
+                                onPressed: () async {
+                                  await ref.read(katalogProvider).uebernehmen(k, raum: l.raum);
+                                  if (ctx.mounted) Navigator.pop(ctx);
+                                },
+                                child: const Text('Als eigenen Preis übernehmen'),
+                              ),
+                            if (ref.read(bestandProvider).einstellungen.katalogBeitragen && !k.eigen && !k.vonMir)
+                              TextButton(
+                                key: Key('katalog-bestaetigen-${k.id}'),
+                                onPressed: () async {
+                                  await ref.read(katalogProvider).bestaetigen(k);
+                                  final neu = await ref.read(katalogProvider).suchen(p.name, filiale: filiale?.region == null ? null : filiale);
+                                  setState(() => treffer = neu);
+                                },
+                                child: const Text('Habe ich auch so gesehen'),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Schließen'))],
+      ),
+    ),
+  );
+}
+
