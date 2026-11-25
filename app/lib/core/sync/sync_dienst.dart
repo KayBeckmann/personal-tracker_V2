@@ -186,6 +186,16 @@ class SyncNotifier extends Notifier<SyncStatus> {
 
   Future<SyncBericht?> _beginnen() => _laufend = _abgleichen().whenComplete(() => _laufend = null);
 
+  /// Motor für Arbeiten außerhalb eines Abgleichs (Räume verwalten).
+  Future<(SyncMotor, SyncApi)> werkzeug() async {
+    final v = await _verbindung();
+    final api = _api(v.server, token: v.token);
+    return (
+      SyncMotor(ablage: ref.read(ablageProvider), dek: _offen.dek, api: api, sperre: _sitzung.sperre, uhr: ref.read(uhrProvider)),
+      api,
+    );
+  }
+
   Future<SyncBericht?> _abgleichen() async {
     if (ref.read(sitzungProvider) is! Entsperrt || !_sitzung.syncAktiv) return null;
     final s = _offen;

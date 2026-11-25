@@ -16,6 +16,7 @@ import 'modell/datum.dart';
 import 'modell/finanzen.dart';
 import 'modell/notiz.dart';
 import 'modell/termin.dart';
+import 'raeume/raum.dart';
 import 'speicher/ablage.dart';
 import 'speicher/backup.dart';
 import 'speicher/rohdaten.dart';
@@ -426,6 +427,9 @@ class SitzungNotifier extends Notifier<Sitzung> {
   Future<void> geplantBuchen(Buchung b, {DateTime? datum}) => speichereBuchung(
         b.kopie(status: BuchungsStatus.gebucht, ausPlanung: !b.istUmbuchung, datum: datum),
       );
+
+  /// Raumdaten (Schlüssel, Mitglieder, Ordner) speichern.
+  Future<void> raumSpeichern(Raum r) => _schreiben('raeume', r.id, r.toJson(), (b) => b.kopie(raeume: {...b.raeume, r.id: r}));
 
   Future<void> speichereEinstellungen(Einstellungen e) async {
     await _schreiben('einstellungen', 'app', e.toJson(), (b) => b.kopie(einstellungen: e));

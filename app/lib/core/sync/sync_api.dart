@@ -215,7 +215,8 @@ class SyncApi {
     );
   }
 
-  Future<List<({String id, bool ok, int seq})>> schreiben(List<({String id, int basis, String aenderung, String daten})> aenderungen, {String? raum}) async {
+  /// Bei einem Konflikt liefert der Server seine Fassung mit ([daten]).
+  Future<List<({String id, bool ok, int seq, String? daten})>> schreiben(List<({String id, int basis, String aenderung, String daten})> aenderungen, {String? raum}) async {
     final j = await _anfrage('POST', '${_ort(raum)}/objekte', body: {
       'aenderungen': [
         for (final a in aenderungen) {'id': a.id, 'basis': a.basis, 'aenderung': a.aenderung, 'daten': a.daten},
@@ -223,7 +224,7 @@ class SyncApi {
     });
     return [
       for (final e in (j['ergebnisse'] as List).cast<Map<String, dynamic>>())
-        (id: e['id'] as String, ok: e['status'] == 'ok', seq: e['seq'] as int),
+        (id: e['id'] as String, ok: e['status'] == 'ok', seq: e['seq'] as int, daten: e['daten'] as String?),
     ];
   }
 

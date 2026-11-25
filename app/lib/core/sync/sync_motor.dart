@@ -130,6 +130,8 @@ class SyncMotor {
     return null;
   }
 
+  static String freigabeSchluessel(String id, String? raum) => raum == null ? id : '$id@$raum';
+
   /// Der Vault-Raum, unter dessen Ordner [pfad] liegt.
   static Raum? raumFuerPfad(String pfad, Iterable<Raum> raeume) {
     for (final r in raeume) {
@@ -160,11 +162,19 @@ class SyncMotor {
       if (!r.mehr) break;
     }
 
+    if (raum != null) {
+      // Zurückgestellte Objekte dieses Raums noch einmal versuchen.
+      for (final z in (await stand.zurueckgestellt()).values) {
+        if (z.raum == raum.id && !objekte.any((o) => o.id == z.id && o.seq >= z.seq)) objekte.add((id: z.id, seq: z.seq, daten: z.daten));
+      }
+      objekte.sort((a, b) => a.seq.compareTo(b.seq));
+    }
+
     // Entschlüsseln außerhalb der Sperre.
     final erlaubt = raum == null
         ? {...Ablage.bereiche, vaultBereich}
         : {'raum', switch (raum.art) { RaumArt.kalender => 'termine', RaumArt.aufgaben => 'aufgaben', RaumArt.vault => vaultBereich }};
-    final umschlaege = <({int seq, Umschlag u})>[];
+    final umschlaege = <({int seq, Umschlag u, String oid, String daten})>[];
     for (final o in objekte) {
       final u = raum == null ? v.schluessel.entschluesseln(o.id, o.daten) : raum.entschluesseln(o.id, o.daten);
       if (u == null) {
@@ -178,29 +188,39 @@ class SyncMotor {
         bericht.defekt++;
         continue;
       }
-      umschlaege.add((seq: o.seq, u: u));
+      umschlaege.add((seq: o.seq, u: u, oid: o.id, daten: o.daten));
     }
 
     await sperre.exklusiv(() => ablage.transaktion((tx) async {
           final basis = await stand.basis(tx: tx);
           final ausgang = await stand.ausgang(tx: tx);
           final orte = await stand.orte(tx: tx);
+          final zurueck = await stand.zurueckgestellt(tx: tx);
           final geloeschteKonten = <String, Map<String, dynamic>>{};
           _vaultIndex = null;
           final vBasis = await vault.basis(tx: tx);
           final v0 = (await stand.verbindung(tx: tx))!;
           var aktuellerRaum = raum;
-          for (final (:seq, :u) in umschlaege) {
+          for (final (:seq, :u, :oid, :daten) in umschlaege) {
             if (u.bereich == 'raum') {
               // Raum-Info des Eigentümers: Name und Mitglieder.
               if (raum != null && !raum.eigen && u.daten != null) aktuellerRaum = await _infoUebernehmen(raum.id, u.daten!, tx);
               continue;
             }
             final k = SyncStand.schluessel(u.bereich, u.id);
+            if (raum != null && zurueck[k]?.raum == raum.id && zurueck[k]!.seq <= seq) zurueck.remove(k);
             if (orte[k] != raum?.id) {
               // Liegt (für uns) woanders: ein Löschvermerk hier betrifft uns
               // nicht mehr; eine Fassung hier heißt, er ist hierher gewandert.
               if (u.daten == null) continue;
+              // Ein Raum darf nichts übernehmen, was hier noch woanders liegt
+              // (sonst könnte ein Mitglied einen wieder privaten Eintrag
+              // zurückholen). Eigene Verschiebungen löschen zuerst am alten
+              // Ort; danach kommt das zurückgestellte Objekt an die Reihe.
+              if (raum != null && (ausgang.containsKey(k) || await ablage.lesenEinzeln(dek, u.bereich, u.id, tx: tx) != null)) {
+                zurueck[k] = (raum: raum.id, seq: seq, id: oid, daten: daten);
+                continue;
+              }
               if (raum == null) {
                 orte.remove(k);
               } else {
@@ -223,6 +243,7 @@ class SyncMotor {
           await vault.setzeBasis(vBasis, tx: tx);
           await stand.setzeBasis(basis, tx: tx);
           await stand.setzeOrte(orte, tx: tx);
+          await stand.setzeZurueckgestellt(zurueck, tx: tx);
           if (raum == null) {
             final jetzt = (await stand.verbindung(tx: tx))!;
             await stand.setzeVerbindung(jetzt.mit(seq: seit, bekannt: seit > jetzt.bekannt ? seit : jetzt.bekannt), tx: tx);
@@ -545,8 +566,12 @@ class SyncMotor {
           for (final e in offen) {
             final name = Raum.antwortName(e.slot, e.paar, m['antwort'] as String);
             if (name == null) continue;
-            mitglieder.add(Mitglied(konto: konto, name: name, recht: m['recht'] as String, paar: e.paar));
+            final neues = Mitglied(konto: konto, name: name, recht: m['recht'] as String, paar: e.paar);
+            mitglieder.add(neues);
             offen.remove(e);
+            // Aktuelle Schlüssel nachreichen (die Einladung kann älter sein
+            // als der letzte Schlüsselwechsel).
+            await api.mitgliedAendern(r.id, konto, paket: r.mitgliedPaket(e.paar));
             bericht.neueMitglieder.add('$name (${r.name})');
             break;
           }
@@ -571,11 +596,10 @@ class SyncMotor {
   /// Schreibt die Raum-Info (Name, Art, Mitglieder), wenn sie sich geändert
   /// hat. Nur der Eigentümer.
   Future<void> infoSenden(Raum r) async {
-    final v = (await stand.verbindung())!;
     final daten = {
       'name': r.name,
       'art': r.art.name,
-      'von': v.name,
+      'von': r.von,
       'mitglieder': [for (final m in r.mitglieder) {'name': m.name, 'recht': m.recht}],
     };
     final st = await stand.raumStaende();
@@ -648,6 +672,8 @@ class SyncMotor {
     await vault.setzeBasis(vBasis, tx: tx);
     final st = await stand.raumStaende(tx: tx)..remove(r.id);
     await stand.setzeRaumStaende(st, tx: tx);
+    final z = await stand.zurueckgestellt(tx: tx)..removeWhere((_, x) => x.raum == r.id);
+    await stand.setzeZurueckgestellt(z, tx: tx);
     await ablage.loeschen('raeume', r.id, tx: tx);
     await stand.vormerken('raeume', r.id, tx: tx);
   }
@@ -771,7 +797,7 @@ class SyncMotor {
     return konflikt;
   }
 
-  Future<List<(_Sendung, ({String id, bool ok, int seq}))>> _schicken(Verbindung v, Raum? raum, List<_Sendung> liste) async {
+  Future<List<(_Sendung, ({String id, bool ok, int seq, String? daten}))>> _schicken(Verbindung v, Raum? raum, List<_Sendung> liste) async {
     if (liste.isEmpty) return const [];
     final ort = _ort(v, raum);
     final zuordnung = <String, _Sendung>{};
@@ -787,8 +813,19 @@ class SyncMotor {
         daten: ort.verschluesseln(Umschlag(bereich: bereich, id: id, schema: aktuellesSchema, daten: s.daten)),
       ));
     }
-    final ergebnisse = await api.schreiben(aenderungen, raum: raum?.id);
-    return [for (final r in ergebnisse) if (zuordnung[r.id] != null) (zuordnung[r.id]!, r)];
+    final ergebnisse = [for (final r in await api.schreiben(aenderungen, raum: raum?.id)) if (zuordnung[r.id] != null) (zuordnung[r.id]!, r)];
+    // Kommt ein Datensatz an einen Ort zurück, an dem nur noch sein
+    // Löschvermerk liegt (z. B. geteilt und wieder privat), gilt dieser
+    // als Basis.
+    final nochmal = <_Sendung>[];
+    for (final (s, r) in ergebnisse) {
+      if (r.ok || s.basis != 0 || r.daten == null) continue;
+      final dort = ort.entschluesseln(r.id, r.daten!);
+      if (dort != null && dort.daten == null) nochmal.add(_Sendung(s.key, r.seq, s.aenderung, s.daten, s.vault, s.ort));
+    }
+    if (nochmal.isEmpty) return ergebnisse;
+    final zweite = {for (final (s, r) in await _schicken(v, raum, nochmal)) s.key: (s, r)};
+    return [for (final (s, r) in ergebnisse) zweite[s.key] ?? (s, r)];
   }
 
   /// Prüft ausstehende Vault-Dateien vor dem Senden und lädt fehlende
@@ -836,7 +873,10 @@ class SyncMotor {
       }
       if (inhaltNeu || (neuHier && ziel != null)) {
         final treffer = secrets.pruefen(inhalt);
-        if (treffer != null && treffer.isNotEmpty && freigaben[id] != d.sha256) {
+        // Eine Freigabe gilt für genau diesen Inhalt an genau diesem Ort:
+        // Was privat hochgeladen werden durfte, ist nicht automatisch für
+        // andere freigegeben.
+        if (treffer != null && treffer.isNotEmpty && freigaben[freigabeSchluessel(id, ziel)] != d.sha256) {
           bericht.vaultGesperrt.add(id);
           zurueck.add(k);
           continue;
@@ -969,6 +1009,7 @@ class _Ort {
 
   String objektId(String b, String i) => raum?.objektId(b, i) ?? ks.objektId(b, i);
   String verschluesseln(Umschlag u) => raum?.verschluesseln(u) ?? ks.verschluesseln(u);
+  Umschlag? entschluesseln(String oid, String daten) => raum != null ? raum!.entschluesseln(oid, daten) : ks.entschluesseln(oid, daten);
   String blockId(Uint8List klar) => raum?.blockId(klar) ?? ks.blockId(klar);
   Uint8List blockVerschluesseln(String id, Uint8List klar) => raum?.blockVerschluesseln(id, klar) ?? ks.blockVerschluesseln(id, klar);
   Uint8List? blockEntschluesseln(String id, Uint8List daten, int groesse) =>

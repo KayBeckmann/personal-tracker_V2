@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../sitzung.dart';
 import '../sync/sync_api.dart';
 import '../sync/sync_dienst.dart';
+import '../sync/sync_motor.dart';
 import '../sync/sync_stand.dart';
 import 'secrets.dart';
 import 'vault_datei.dart';
@@ -94,13 +95,16 @@ class VaultNotifier extends Notifier<VaultZustand> {
     final teile = BytesBuilder(copy: false);
     SyncApi? api;
     Verbindung? v;
+    final raum = d.blockOrt == null ? null : _offen.bestand.raeume[d.blockOrt];
+    if (d.blockOrt != null && raum == null) throw VaultFehler('Diese Datei gehört zu einer Freigabe, auf die du keinen Zugriff mehr hast.');
     for (final b in d.bloecke) {
       var klar = await stand.block(b.id);
       if (klar == null) {
         v ??= await SyncStand(ref.read(ablageProvider), _offen.dek).verbindung();
         if (v == null) throw VaultFehler('Diese Datei ist nur auf dem Server, und die App ist nicht verbunden.');
         api ??= SyncApi(serverAdresse(v.server), client: ref.read(httpClientProvider), token: v.token);
-        klar = v.schluessel.blockEntschluesseln(b.id, await api.blockLesen(b.id), b.groesse);
+        final geheim = await api.blockLesen(b.id, raum: raum?.id);
+        klar = raum != null ? raum.blockEntschluesseln(b.id, geheim, b.groesse) : v.schluessel.blockEntschluesseln(b.id, geheim, b.groesse);
         if (klar == null) throw VaultFehler('Ein Teil der Datei ließ sich nicht entschlüsseln.');
         await stand.blockSpeichern(b.id, klar);
       }
@@ -154,7 +158,8 @@ class VaultNotifier extends Notifier<VaultZustand> {
 
   /// Erlaubt das Hochladen genau dieses Inhalts trotz Secret-Treffer.
   Future<void> freigeben(VaultDatei d) async {
-    await _stand().freigeben(d.id, d.sha256);
+    final raum = SyncMotor.raumFuerPfad(d.pfad, _offen.bestand.raeume.values);
+    await _stand().freigeben(SyncMotor.freigabeSchluessel(d.id, raum?.id), d.sha256);
     unawaited(ref.read(syncProvider.notifier).abgleichen());
   }
 

@@ -139,6 +139,34 @@ class SyncStand {
         tx: tx,
       );
 
+  /// Raum-Objekte, die einen Datensatz betreffen, der hier noch an einem
+  /// anderen Ort liegt (siehe [SyncMotor]): Schlüssel → Raum, Revision,
+  /// Objekt-ID und Geheimtext. Sie werden eingespielt, sobald der
+  /// Datensatz dort weg ist.
+  Future<Map<String, ({String raum, int seq, String id, String daten})>> zurueckgestellt({DatabaseClient? tx}) async {
+    final j = await ablage.lesenEinzeln(dek, 'sync', 'zurueckgestellt', tx: tx);
+    return {
+      for (final e in ((j?['objekte'] as Map?) ?? const {}).entries)
+        '${e.key}': (
+          raum: (e.value as Map)['raum'] as String,
+          seq: (e.value as Map)['seq'] as int,
+          id: (e.value as Map)['id'] as String,
+          daten: (e.value as Map)['daten'] as String,
+        ),
+    };
+  }
+
+  Future<void> setzeZurueckgestellt(Map<String, ({String raum, int seq, String id, String daten})> m, {DatabaseClient? tx}) => ablage.schreiben(
+        dek,
+        'sync',
+        'zurueckgestellt',
+        {
+          'id': 'zurueckgestellt',
+          'objekte': {for (final e in m.entries) e.key: {'raum': e.value.raum, 'seq': e.value.seq, 'id': e.value.id, 'daten': e.value.daten}},
+        },
+        tx: tx,
+      );
+
   /// Ausstehende Änderungen: Schlüssel → Änderungs-ID.
   Future<Map<String, String>> ausgang({DatabaseClient? tx}) async => {
         for (final j in await ablage.lesen(dek, 'sync_ausgang', tx: tx)) j['id'] as String: j['aenderung'] as String,
