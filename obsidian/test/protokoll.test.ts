@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { hex, hkdf, vonBase64 } from '../src/krypto.ts';
-import { Kontoschluessel, Kopplungscode, konfliktPfad, vaultPfad, ausnahme } from '../src/protokoll.ts';
+import { Kontoschluessel, Kopplungscode, konfliktPfad, vaultPfad, ausnahme, SCHEMA } from '../src/protokoll.ts';
 import { pruefeText, pruefen } from '../src/secrets.ts';
 import { Raum } from '../src/raum.ts';
 
 const v = JSON.parse(readFileSync(new URL('../../protokoll/testvektoren.json', import.meta.url), 'utf8'));
 const beispiele = JSON.parse(readFileSync(new URL('../../protokoll/secret-beispiele.json', import.meta.url), 'utf8'));
+
+test('Plugin kennt die Schemaversion der App', () => {
+  assert.equal(SCHEMA, v.schema, 'App-Schema geändert: SCHEMA in src/protokoll.ts anpassen');
+});
 
 test('Testvektoren der App: HKDF, Objekt-ID, Umschlag, Block, Gerätename, Kopplung', async () => {
   const ks = Kontoschluessel.ausBase64(v.kontoschluessel);

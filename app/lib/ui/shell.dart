@@ -8,6 +8,7 @@ import '../core/sitzung.dart';
 import '../core/sync/sync_dienst.dart';
 import '../core/vault/vault_dienst.dart';
 import 'aufgaben/aufgaben.dart';
+import 'einkauf/einkauf.dart';
 import 'einstellungen/einstellungen.dart';
 import 'finanzen/haushaltsbuch.dart';
 import 'navigation.dart';
@@ -66,6 +67,7 @@ class _ShellState extends ConsumerState<Shell> {
       Bereich.aufgaben => const AufgabenSeite(),
       Bereich.notizen => const NotizenSeite(),
       Bereich.finanzen => const HaushaltsbuchSeite(),
+      Bereich.einkauf => const EinkaufSeite(),
       Bereich.vault => const VaultSeite(),
       Bereich.freigaben => const FreigabenSeite(),
       Bereich.einstellungen => const EinstellungenSeite(),
@@ -149,12 +151,22 @@ class _Seitenleiste extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(padding: const EdgeInsets.fromLTRB(10, 0, 10, 30), child: Markenzeichen(unter: _markenUnter(ref))),
-          for (final b in _bereiche(ref))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _NavKnopf(bereich: b, aktiv: b == aktiv),
+          // Scrollbar, damit niedrige Fenster nicht überlaufen.
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final b in _bereiche(ref))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _NavKnopf(bereich: b, aktiv: b == aktiv),
+                    ),
+                ],
+              ),
             ),
-          const Spacer(),
+          ),
+          const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: SyncStatusText(style: TextStyle(fontSize: 12, color: f.leise, height: 1.5)),

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:personal_tracker/core/krypto/krypto.dart';
 import 'package:personal_tracker/core/raeume/raum.dart';
+import 'package:personal_tracker/core/speicher/schema.dart';
 import 'package:personal_tracker/core/sync/sync_krypto.dart';
 import 'package:personal_tracker/core/vault/vault_datei.dart';
 
@@ -30,6 +31,7 @@ void main() {
     final umschlag = Umschlag(bereich: 'vault', id: 'datei-1', schema: 4, daten: {'id': 'datei-1', 'pfad': 'Ordner/Ä.md'});
     return {
       'hinweis': 'Erzeugt von app/test/core/protokoll_test.dart; Schlüssel nur für Tests.',
+      'schema': aktuellesSchema,
       'kontoschluessel': base64Encode(ks.bytes),
       'hkdf': {'material': base64Encode(ks.bytes), 'info': 'ptv2-vault-block-id-v1', 'ergebnis': hex(hkdf(ks.bytes, 'ptv2-vault-block-id-v1'))},
       'objektId': {'bereich': 'vault', 'id': 'datei-1', 'ergebnis': ks.objektId('vault', 'datei-1')},
@@ -54,6 +56,7 @@ void main() {
       datei.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(erzeugen()));
     }
     final v = jsonDecode(datei.readAsStringSync()) as Map<String, dynamic>;
+    expect(v['schema'], aktuellesSchema, reason: 'Schema geändert: Testvektoren neu schreiben und SCHEMA im Plugin anpassen');
     final k = Kontoschluessel(base64Decode(v['kontoschluessel'] as String));
     expect(hex(hkdf(k.bytes, v['hkdf']['info'] as String)), v['hkdf']['ergebnis']);
     expect(k.objektId('vault', 'datei-1'), v['objektId']['ergebnis']);

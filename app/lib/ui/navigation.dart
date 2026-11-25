@@ -9,6 +9,7 @@ enum Bereich {
   aufgaben('Aufgaben', Icons.task_alt),
   notizen('Notizen', Icons.notes_outlined),
   finanzen('Haushaltsbuch', Icons.account_balance_wallet_outlined),
+  einkauf('Einkauf', Icons.shopping_cart_outlined),
   vault('Vault', Icons.folder_open_outlined),
   freigaben('Freigaben', Icons.group_outlined),
   einstellungen('Speicher & Sicherheit', Icons.lock_outline);

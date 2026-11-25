@@ -49,9 +49,10 @@ flutter build apk --release --split-per-abi   # braucht android/key.properties
 | Sperre | Beim Start, per Knopf und nach 5 Min im Hintergrund; offene Seiten werden geschlossen |
 | Sicherung | `.ptbackup`: JSON-Kopf (als AAD gebunden) + AES-GCM-Inhalt mit Schlüssel aus dem Recovery-Schlüssel; Einlesen mit Vorschau, in frischer oder laufender Installation |
 | Erinnerungen | Termine und Aufgaben. Android: im System geplant (30 Tage, max. 60), ohne Titel, sofern nicht eingestellt. Web: nur bei geöffneter App |
-| Schema | `lib/core/speicher/schema.dart`: Version + Migrationen (1 = M1, 2 = M2 mit Aufgaben, 3 = M3 mit Konflikt-Fassungen, 4 = M4 mit Vault-Dateien im Sync, 5 = M5 mit Räumen); neuere Stände werden abgelehnt, Migration in einer Transaktion |
+| Schema | `lib/core/speicher/schema.dart`: Version + Migrationen (1 = M1, 2 = M2 mit Aufgaben, 3 = M3 mit Konflikt-Fassungen, 4 = M4 mit Vault-Dateien im Sync, 5 = M5 mit Räumen, 6 = M6 mit Einkauf); neuere Stände werden abgelehnt, Migration in einer Transaktion |
 | Vault | `lib/core/vault/`: Dateien des Obsidian-Vaults aus dem Sync (Vertrag: [protokoll/VAULT.md](../protokoll/VAULT.md)); große Dateien in verschlüsselten Blöcken, erst beim Öffnen geladen und dann zwischengespeichert; Secret-Muster aus `protokoll/secret-muster.json` (Kopie in `secret_muster.g.dart`, ein Test prüft die Gleichheit) |
 | Freigaben | `lib/core/raeume/`: Räume mit Raum- und ID-Schlüssel, Einladung per Einmal-Code (Paarschlüssel aus dem Code), Widerruf mit Schlüsselwechsel; der Motor gleicht jeden Raum wie ein eigenes Konto ab und zieht Einträge beim Wechsel privat ↔ geteilt um. Protokoll: [protokoll/RAEUME.md](../protokoll/RAEUME.md) |
+| Einkauf | `lib/core/einkauf/schaetzung.dart`: Preis je Filiale, sonst Region (Schätzung), sonst unbekannt (nicht 0 €); Umrechnung g↔kg, ml↔l, Stück. Standort nur auf Knopfdruck (`core/dienste/standort.dart`, Android: ACCESS_COARSE/FINE_LOCATION). |
 | Sync | `lib/core/sync/`: Kontoschlüssel (256 Bit) verschlüsselt jeden Datensatz vor dem Upload; Objekt-IDs sind HMACs; Kopplung per Einmal-Code, Recovery über den Recovery-Schlüssel. Details: [server/SICHERHEIT.md](../server/SICHERHEIT.md) |
 
 Unverschlüsselt liegen nur Schlüsselbund, Schemaversion und Farbschema. Der
@@ -61,8 +62,8 @@ ebenfalls mit dem DEK verschlüsselt.
 ## Aufbau
 
 ```
-lib/core/   krypto/ speicher/ modell/ kalender/ aufgaben/ finanzen/ dienste/ sync/ vault/ raeume/ sitzung.dart
-lib/ui/     zugang/ uebersicht/ termine/ aufgaben/ notizen/ finanzen/ einstellungen/ sync/ vault/ raeume/ shell.dart thema.dart
+lib/core/   krypto/ speicher/ modell/ kalender/ aufgaben/ finanzen/ einkauf/ dienste/ sync/ vault/ raeume/ sitzung.dart
+lib/ui/     zugang/ uebersicht/ termine/ aufgaben/ notizen/ finanzen/ einkauf/ einstellungen/ sync/ vault/ raeume/ shell.dart thema.dart
 ```
 
 Haushaltsbuch-Vorschau (`core/finanzen/prognose.dart`): erwartet bis Monatsende =
