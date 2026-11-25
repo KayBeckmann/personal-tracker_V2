@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Android 13+ Themed Icon: eine Farbe, das System färbt ein. -->
+  <g transform="translate(512 512) scale(.667) translate(-512 -512)" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="512" cy="512" r="270" stroke-width="64" stroke-opacity=".35"/>
+    <path d="M512 242 A270 270 0 1 1 242 512" stroke-width="64"/>
+    <path d="M392 522 L478 606 L640 428" stroke-width="68"/>
+  </g>
+</svg>

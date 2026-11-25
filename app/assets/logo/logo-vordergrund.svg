@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Android adaptive icon: Vordergrund ohne Hintergrund, auf die sichtbaren 72 von 108 dp skaliert. -->
+  <g transform="translate(512 512) scale(.667) translate(-512 -512)">
+    <circle cx="512" cy="512" r="270" fill="none" stroke="#3F8A6C" stroke-width="64"/>
+    <path d="M512 242 A270 270 0 1 1 242 512" fill="none" stroke="#FBFCF8" stroke-width="64" stroke-linecap="round"/>
+    <path d="M392 522 L478 606 L640 428" fill="none" stroke="#FBFCF8" stroke-width="68" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

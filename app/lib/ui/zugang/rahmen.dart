@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -48,20 +50,71 @@ class Markenzeichen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final f = context.farben;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Text.rich(
-          TextSpan(children: [
-            const TextSpan(text: 'personal'),
-            TextSpan(text: 'tracker', style: TextStyle(color: f.marke)),
-          ]),
-          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: -.8, color: f.text),
+        const Bildmarke(),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text.rich(
+                TextSpan(children: [
+                  const TextSpan(text: 'personal'),
+                  TextSpan(text: 'tracker', style: TextStyle(color: f.marke)),
+                ]),
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: -.8, color: f.text),
+              ),
+              Text(unter, style: TextStyle(fontSize: 11, color: f.leise, letterSpacing: .3)),
+            ],
+          ),
         ),
-        Text(unter, style: TextStyle(fontSize: 11, color: f.leise, letterSpacing: .3)),
       ],
     );
   }
+}
+
+/// Logo wie das App-Icon (Quelle: assets/logo/logo.svg): Fortschrittsring
+/// zu drei Vierteln mit Haken, auf Akzentgrün.
+class Bildmarke extends StatelessWidget {
+  const Bildmarke({super.key, this.groesse = 34});
+  final double groesse;
+
+  @override
+  Widget build(BuildContext context) =>
+      ExcludeSemantics(child: CustomPaint(size: Size.square(groesse), painter: const _BildmarkeMaler()));
+}
+
+class _BildmarkeMaler extends CustomPainter {
+  const _BildmarkeMaler();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Koordinaten wie im SVG (1024er Raster).
+    canvas.scale(size.width / 1024);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(const Rect.fromLTWH(0, 0, 1024, 1024), const Radius.circular(232)),
+      Paint()..color = const Color(0xFF286A53),
+    );
+    final strich = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 64
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final ring = Rect.fromCircle(center: const Offset(512, 512), radius: 270);
+    canvas.drawCircle(const Offset(512, 512), 270, strich..color = const Color(0xFF3F8A6C));
+    canvas.drawArc(ring, -math.pi / 2, math.pi * 1.5, false, strich..color = const Color(0xFFFBFCF8));
+    canvas.drawPath(
+      Path()
+        ..moveTo(392, 522)
+        ..lineTo(478, 606)
+        ..lineTo(640, 428),
+      strich..strokeWidth = 68,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_BildmarkeMaler oldDelegate) => false;
 }
 
 class PasswortFeld extends StatefulWidget {

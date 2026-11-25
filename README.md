@@ -1,5 +1,7 @@
 # Personal Tracker V2
 
+<img src="app/assets/logo/logo-wortmarke.svg" alt="personaltracker" width="320">
+
 **Status: Meilensteine M1–M9 umgesetzt – Solo-Tracker für Android und Web, ohne Konto und Server nutzbar, auf Wunsch mit Ende-zu-Ende-verschlüsseltem Sync über einen selbst gehosteten Server, inklusive des ganzen Obsidian-Vaults und gezielter Freigaben an andere Personen; dazu Einkaufslisten mit Filialpreisen, ein freiwilliger, föderierter Preiskatalog und ein eng begrenzter Zugang für den eigenen KI-Agenten; betriebsfertig für Self-Hosting und ein gehostetes Angebot.** Termine, Aufgaben, Markdown-Notizen und Haushaltsbuch, lokal verschlüsselt, mit Sicherung und Wiederherstellung. Code: [app/](app/README.md), [server/](server/README.md) [obsidian/](obsidian/README.md) (Plugin) und [agent/](agent/README.md) (MCP-Brücke). Ein gehostetes Angebot ist technisch vorbereitet, aber **nicht** in Betrieb: Preise, Verträge, Hostingort und Freigabe stehen aus. Ideen und offene Fragen: [Brainstorming](Brainstorming.md).
 
 ## Produktidee
