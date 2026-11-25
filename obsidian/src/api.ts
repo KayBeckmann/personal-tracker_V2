@@ -131,30 +131,44 @@ export class SyncApi {
     await this.json('DELETE', `/v1/geraete/${id}`);
   }
 
-  abrufen(seit: number, max?: number): Promise<{ objekte: Objekt[]; bis: number; mehr: boolean }> {
-    return this.json('GET', `/v1/objekte?seit=${seit}${max ? `&max=${max}` : ''}`);
+  /** Pfad der Objekte und Blöcke: eigenes Konto oder geteilter Raum. */
+  private ort(raum?: string): string {
+    return raum ? `/v1/raeume/${raum}` : '/v1';
   }
 
-  async schreiben(aenderungen: { id: string; basis: number; aenderung: string; daten: string }[]): Promise<{ id: string; ok: boolean; seq: number }[]> {
-    const j = await this.json('POST', '/v1/objekte', { aenderungen });
-    return j.ergebnisse.map((e: any) => ({ id: e.id, ok: e.status === 'ok', seq: e.seq }));
+  abrufen(seit: number, max?: number, raum?: string): Promise<{ objekte: Objekt[]; bis: number; mehr: boolean }> {
+    return this.json('GET', `${this.ort(raum)}/objekte?seit=${seit}${max ? `&max=${max}` : ''}`);
   }
 
-  async blockSchreiben(id: string, daten: Uint8Array<ArrayBuffer>): Promise<void> {
-    await this.roh('PUT', `/v1/bloecke/${id}`, daten, 'application/octet-stream');
+  /** Bei einem Konflikt liefert der Server seine Fassung mit (`daten`). */
+  async schreiben(
+    aenderungen: { id: string; basis: number; aenderung: string; daten: string }[],
+    raum?: string,
+  ): Promise<{ id: string; ok: boolean; seq: number; daten?: string }[]> {
+    const j = await this.json('POST', `${this.ort(raum)}/objekte`, { aenderungen });
+    return j.ergebnisse.map((e: any) => ({ id: e.id, ok: e.status === 'ok', seq: e.seq, daten: e.daten }));
   }
 
-  async blockLesen(id: string): Promise<Uint8Array<ArrayBuffer>> {
-    return (await this.roh('GET', `/v1/bloecke/${id}`)).bytes;
+  async blockSchreiben(id: string, daten: Uint8Array<ArrayBuffer>, raum?: string): Promise<void> {
+    await this.roh('PUT', `${this.ort(raum)}/bloecke/${id}`, daten, 'application/octet-stream');
   }
 
-  async bloeckeFehlend(ids: string[]): Promise<string[]> {
+  async blockLesen(id: string, raum?: string): Promise<Uint8Array<ArrayBuffer>> {
+    return (await this.roh('GET', `${this.ort(raum)}/bloecke/${id}`)).bytes;
+  }
+
+  async bloeckeFehlend(ids: string[], raum?: string): Promise<string[]> {
     const fehlend: string[] = [];
-    for (let i = 0; i < ids.length; i += 5000) fehlend.push(...(await this.json('POST', '/v1/bloecke/fehlend', { ids: ids.slice(i, i + 5000) })).fehlend);
+    for (let i = 0; i < ids.length; i += 5000) fehlend.push(...(await this.json('POST', `${this.ort(raum)}/bloecke/fehlend`, { ids: ids.slice(i, i + 5000) })).fehlend);
     return fehlend;
   }
 
-  async bloeckeAufraeumen(behalten: string[]): Promise<number> {
-    return (await this.json('POST', '/v1/bloecke/aufraeumen', { behalten })).geloescht;
+  async bloeckeAufraeumen(behalten: string[], raum?: string): Promise<number> {
+    return (await this.json('POST', `${this.ort(raum)}/bloecke/aufraeumen`, { behalten })).geloescht;
+  }
+
+  /** Eigene und geteilte Räume (Server ab 1.2.0). */
+  async raeume(): Promise<{ id: string; recht: string; paket?: string }[]> {
+    return (await this.json('GET', '/v1/raeume')).raeume;
   }
 }

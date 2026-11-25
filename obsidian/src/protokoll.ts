@@ -4,7 +4,7 @@
 import { base64, entschluesseln, hex, hkdf, hmac, sha256, utf8, verschluesseln, vonBase64, vonUtf8, zufall } from './krypto.ts';
 
 export const VAULT_BEREICH = 'vault';
-export const SCHEMA = 4;
+export const SCHEMA = 5;
 export const INLINE_GRENZE = 64 * 1024;
 export const BLOCK_GROESSE = 1024 * 1024;
 const BLOCK_RASTER = 4096;
@@ -149,13 +149,21 @@ export class Kontoschluessel {
   }
 
   /** Datensatz einer Datei; große Inhalte als Blöcke (Klartext in [neueBloecke]). */
-  async vaultDatei(id: string, pfad: string, inhalt: Bytes, geaendert: Date, neueBloecke?: Map<string, Bytes>): Promise<VaultDatei> {
+  /** [blockId] des Orts (Konto oder Raum); Standard: Konto. */
+  async vaultDatei(
+    id: string,
+    pfad: string,
+    inhalt: Bytes,
+    geaendert: Date,
+    neueBloecke?: Map<string, Bytes>,
+    blockId: (k: Bytes) => Promise<string> = (k) => this.blockId(k),
+  ): Promise<VaultDatei> {
     const basis = { id, pfad, groesse: inhalt.length, sha256: await sha256(inhalt), geaendert: geaendert.toISOString() };
     if (inhalt.length <= INLINE_GRENZE) return { ...basis, inhalt: base64(inhalt) };
     const bloecke: BlockRef[] = [];
     for (let i = 0; i < inhalt.length; i += BLOCK_GROESSE) {
       const teil = inhalt.slice(i, Math.min(i + BLOCK_GROESSE, inhalt.length));
-      const bid = await this.blockId(teil);
+      const bid = await blockId(teil);
       bloecke.push({ id: bid, groesse: teil.length });
       neueBloecke?.set(bid, teil);
     }
