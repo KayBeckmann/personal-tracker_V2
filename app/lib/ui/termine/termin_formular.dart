@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/modell/datum.dart';
 import '../../core/modell/termin.dart';
+import '../../core/raeume/raum.dart';
 import '../../core/sitzung.dart';
 import '../bausteine.dart';
 import '../format.dart';
+import '../raeume/raum_auswahl.dart';
 
 const _erinnerungenMitZeit = <int?, String>{
   null: 'Keine Erinnerung',
@@ -57,6 +59,7 @@ class _TerminFormularState extends ConsumerState<_TerminFormular> {
   late Rhythmus? _rhythmus = widget.termin?.wiederholung?.rhythmus;
   late DateTime? _bis = widget.termin?.wiederholung?.bis;
   late int? _erinnerung = widget.termin?.erinnerungMinuten;
+  late String? _raum = widget.termin?.raum;
   String? _fehler;
 
   @override
@@ -118,6 +121,7 @@ class _TerminFormularState extends ConsumerState<_TerminFormular> {
       ausnahmen: widget.termin?.ausnahmen ?? const {},
       erinnerungMinuten: _erinnerung,
       geaendert: DateTime.now().toUtc(),
+      raum: _raum,
     );
     final ersteErinnerung = _erinnerung != null && !ref.read(bestandProvider).termine.values.any((x) => x.erinnerungMinuten != null);
     await s.speichereTermin(t);
@@ -252,6 +256,7 @@ class _TerminFormularState extends ConsumerState<_TerminFormular> {
                 ),
               ),
             const SizedBox(height: 12),
+            RaumAuswahl(art: RaumArt.kalender, wert: _raum, onChanged: (v) => setState(() => _raum = v), bezeichnung: 'Kalender'),
             DropdownButtonFormField<int?>(
               key: ValueKey('termin-erinnerung-$_ganztag'),
               initialValue: _erinnerung,
@@ -316,6 +321,8 @@ class _ZeitZeile extends StatelessWidget {
 /// ganze Serie löschen.
 Future<void> vorkommenZeigen(BuildContext context, WidgetRef ref, Vorkommen v) async {
   final t = v.termin;
+  final raum = ref.read(bestandProvider).raeume[t.raum];
+  final gesperrt = raum != null && !raum.schreibbar;
   final aktion = await showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -333,7 +340,15 @@ Future<void> vorkommenZeigen(BuildContext context, WidgetRef ref, Vorkommen v) a
             if (t.wiederholung != null) Text('Wiederholt sich ${t.wiederholung!.beschreibung}'),
             if (t.erinnerungMinuten != null) Text('Erinnerung: ${(t.ganztaegig ? _erinnerungenGanztag : _erinnerungenMitZeit)[t.erinnerungMinuten] ?? '${t.erinnerungMinuten} Min. vorher'}'),
             if (t.notiz != null) ...[const SizedBox(height: 10), Text(t.notiz!)],
+            if (raum != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                gesperrt ? 'Aus „${raum.name}“ von ${raum.von} – nur lesen.' : 'Geteilt im Kalender „${raum.name}“.',
+                key: const Key('termin-geteilt'),
+              ),
+            ],
             const SizedBox(height: 18),
+            if (!gesperrt)
             Wrap(
               spacing: 8,
               runSpacing: 8,

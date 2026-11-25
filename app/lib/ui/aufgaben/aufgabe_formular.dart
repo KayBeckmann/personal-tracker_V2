@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/modell/aufgabe.dart';
 import '../../core/modell/datum.dart';
 import '../../core/modell/termin.dart';
+import '../../core/raeume/raum.dart';
 import '../../core/sitzung.dart';
 import '../bausteine.dart';
 import '../format.dart';
+import '../raeume/raum_auswahl.dart';
 import '../thema.dart';
 
 /// Aufgabe anlegen ([aufgabe] == null) oder bearbeiten.
@@ -41,6 +43,7 @@ class _AufgabeFormularState extends ConsumerState<_AufgabeFormular> {
   late Rhythmus? _rhythmus = widget.aufgabe?.wiederholung?.rhythmus;
   late DateTime? _bis = widget.aufgabe?.wiederholung?.bis;
   late int? _erinnerungUm = widget.aufgabe?.erinnerungUm;
+  late String? _raum = widget.aufgabe?.raum;
   String? _fehler;
 
   @override
@@ -94,6 +97,7 @@ class _AufgabeFormularState extends ConsumerState<_AufgabeFormular> {
       erledigt: alt?.erledigt,
       verlauf: alt?.verlauf ?? const [],
       geaendert: DateTime.now().toUtc(),
+      raum: _raum,
     );
     final b = ref.read(bestandProvider);
     final ersteErinnerung = erinnerungUm != null &&
@@ -258,6 +262,7 @@ class _AufgabeFormularState extends ConsumerState<_AufgabeFormular> {
                 ),
             ],
             const SizedBox(height: 14),
+            RaumAuswahl(art: RaumArt.aufgaben, wert: _raum, onChanged: (v) => setState(() => _raum = v), bezeichnung: 'Liste'),
             TextFormField(
               controller: _notiz,
               minLines: 2,
@@ -274,7 +279,13 @@ class _AufgabeFormularState extends ConsumerState<_AufgabeFormular> {
             ],
             if (_fehler != null)
               Padding(padding: const EdgeInsets.only(top: 12), child: Text(_fehler!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
+            if (nurLesen(ref, widget.aufgabe?.raum))
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Hinweis(text: 'Aus einer geteilten Liste mit Leserecht. Ändern kann sie nur, wer Schreibrecht hat.'),
+              ),
             const SizedBox(height: 22),
+            if (!nurLesen(ref, widget.aufgabe?.raum))
             Wrap(
               alignment: WrapAlignment.end,
               spacing: 8,

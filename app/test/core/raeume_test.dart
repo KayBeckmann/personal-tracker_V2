@@ -81,8 +81,8 @@ void main() {
     // Schreiben: Lena ändert, Kay bekommt es. Tim (nur lesen) wird nicht gesendet.
     await lena.g.s.speichereTermin(lena.g.b.termine['fest-1']!.kopie(titel: 'Weihnachtsessen bei Oma'));
     await lena.sync();
-    await tim.g.s.speichereTermin(tim.g.b.termine['fest-1']!.kopie(titel: 'Von Tim geändert'));
-    await tim.g.sync.abgleichen();
+    // Mit Leserecht lässt sich nichts ändern (die Oberfläche bietet es nicht an).
+    await expectLater(tim.g.s.speichereTermin(tim.g.b.termine['fest-1']!.kopie(titel: 'Von Tim geändert')), throwsStateError);
     await kay.sync();
     expect(kay.g.b.termine['fest-1']!.titel, 'Weihnachtsessen bei Oma');
 

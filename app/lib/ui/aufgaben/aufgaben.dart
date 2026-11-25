@@ -6,6 +6,7 @@ import '../../core/modell/aufgabe.dart';
 import '../../core/modell/datum.dart';
 import '../../core/sitzung.dart';
 import '../bausteine.dart';
+import '../raeume/raum_auswahl.dart';
 import '../format.dart';
 import '../thema.dart';
 import 'aufgabe_formular.dart';
@@ -147,7 +148,9 @@ class AufgabenZeile extends ConsumerWidget {
           padding: EdgeInsets.zero,
           iconSize: 20,
           tooltip: a.offen ? 'Abhaken' : 'Wieder öffnen',
-          onPressed: () => a.offen ? aufgabeAbhaken(context, ref, a) : ref.read(sitzungProvider.notifier).speichereAufgabe(a.wiedereroeffnen()),
+          onPressed: nurLesen(ref, a.raum)
+              ? null
+              : () => a.offen ? aufgabeAbhaken(context, ref, a) : ref.read(sitzungProvider.notifier).speichereAufgabe(a.wiedereroeffnen()),
           icon: Icon(a.offen ? Icons.radio_button_unchecked : Icons.check_circle, color: a.offen ? f.meterFuellung : f.leise),
         ),
       ),
@@ -172,6 +175,7 @@ class _Kennzeichen extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (a.raum != null) Padding(padding: const EdgeInsets.only(right: 6), child: RaumMarke(raumId: a.raum)),
         if (a.prioritaet == Prioritaet.hoch)
           Tooltip(message: 'Hohe Wichtigkeit', child: Icon(Icons.flag, size: 15, color: f.warnText)),
         if (a.wiederholung != null) Icon(Icons.repeat, size: 15, color: f.leise),

@@ -6,6 +6,7 @@ import '../../core/modell/datum.dart';
 import '../../core/modell/termin.dart';
 import '../../core/sitzung.dart';
 import '../bausteine.dart';
+import '../raeume/raum_auswahl.dart';
 import '../format.dart';
 import '../thema.dart';
 import 'termin_formular.dart';
@@ -126,6 +127,7 @@ class _TermineSeiteState extends ConsumerState<TermineSeite> {
                         rechtsWidget: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (v.termin.raum != null) Padding(padding: const EdgeInsets.only(right: 6), child: RaumMarke(raumId: v.termin.raum)),
                             if (v.termin.wiederholung != null) Icon(Icons.repeat, size: 15, color: context.farben.leise),
                             if (v.termin.erinnerungMinuten != null) Icon(Icons.notifications_none, size: 15, color: context.farben.leise),
                           ],

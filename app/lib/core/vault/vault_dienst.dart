@@ -145,6 +145,7 @@ class VaultNotifier extends Notifier<VaultZustand> {
   }
 
   Future<void> loeschen(VaultDatei d) async {
+    if (nurLesen(d.pfad)) throw VaultFehler('Dieser Ordner ist mit dir nur zum Lesen geteilt.');
     final ablage = ref.read(ablageProvider);
     await _sitzung.sperre.exklusiv(() => ablage.transaktion((tx) async {
           await _stand().loeschen(d.id, tx: tx);
@@ -177,6 +178,9 @@ class VaultNotifier extends Notifier<VaultZustand> {
     return Uint8List.fromList(ZipEncoder().encode(a));
   }
 
+  /// Liegt [pfad] in einem geteilten Ordner mit Leserecht?
+  bool nurLesen(String pfad) => SyncMotor.raumFuerPfad(pfad, _offen.bestand.raeume.values)?.schreibbar == false;
+
   String _pruefePfad(String pfad, VaultDatei? alt) {
     final String p;
     try {
@@ -184,6 +188,7 @@ class VaultNotifier extends Notifier<VaultZustand> {
     } on FormatException {
       throw VaultFehler('Ungültiger Pfad. Ordner mit „/“ trennen, ohne „..“ und ohne „/“ am Anfang.');
     }
+    if (nurLesen(p) || (alt != null && nurLesen(alt.pfad))) throw VaultFehler('Dieser Ordner ist mit dir nur zum Lesen geteilt.');
     final belegt = _anPfad(p);
     if (belegt != null && belegt.id != alt?.id) throw VaultFehler('„$p“ gibt es schon.');
     return p;

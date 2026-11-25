@@ -279,6 +279,15 @@ class SitzungNotifier extends Notifier<Sitzung> {
   Future<void> _aendern(List<(String, String, Map<String, dynamic>?)> datensaetze, Bestand Function(Bestand) neu) =>
       sperre.exklusiv(() async {
         final s = _offen;
+        // Geteilte Einträge mit Leserecht bleiben unverändert (die
+        // Oberfläche bietet das gar nicht erst an).
+        for (final (bereich, id, json) in datensaetze) {
+          if (bereich != 'termine' && bereich != 'aufgaben') continue;
+          final vorher = bereich == 'termine' ? s.bestand.termine[id]?.raum : s.bestand.aufgaben[id]?.raum;
+          for (final r in [vorher, json?['raum'] as String?]) {
+            if (r != null && s.bestand.raeume[r]?.schreibbar == false) throw StateError('Dieser Eintrag ist nur lesbar.');
+          }
+        }
         final bestand = neu(s.bestand);
         final stand = _syncAktiv ? SyncStand(_ablage, s.dek) : null;
         Future<void> alle(DatabaseClient? tx) async {
