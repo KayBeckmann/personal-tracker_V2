@@ -524,7 +524,18 @@ class SitzungNotifier extends Notifier<Sitzung> {
     }
     final f = x.filialeId == null ? null : _b.filialen[x.filialeId];
     if (f != null && f.raum != x.raum) {
-      final kopie = Filiale(id: neueId(), kette: f.kette, name: f.name, region: f.region, breite: f.breite, laenge: f.laenge, geaendert: jetzt, raum: x.raum);
+      final kopie = Filiale(
+        id: neueId(),
+        kette: f.kette,
+        ketteSchluessel: f.ketteSchluessel,
+        name: f.name,
+        region: f.region,
+        regionSchluessel: f.regionSchluessel,
+        breite: f.breite,
+        laenge: f.laenge,
+        geaendert: jetzt,
+        raum: x.raum,
+      );
       neueFilialen[kopie.id] = kopie;
       x = x.kopie(filialeId: () => kopie.id);
       aenderungen.add(('filialen', kopie.id, kopie.toJson()));

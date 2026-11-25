@@ -36,6 +36,8 @@ class Filiale {
     required this.kette,
     required this.name,
     this.region,
+    this.regionSchluessel,
+    this.ketteSchluessel,
     this.breite,
     this.laenge,
     required this.geaendert,
@@ -50,8 +52,16 @@ class Filiale {
   /// z. B. „Hauptstraße, Musterstadt“.
   final String name;
 
-  /// Optional: Preisregion, z. B. „Musterstadt“.
+  /// Optional: Preisregion. Seit M10 ein Landkreis bzw. eine kreisfreie
+  /// Stadt aus der festen Liste: [region] ist dann deren Name.
   final String? region;
+
+  /// Amtlicher Kreisschlüssel (M10, z. B. „13074“); `null` bei älteren
+  /// Filialen mit frei eingetippter Region.
+  final String? regionSchluessel;
+
+  /// Schlüssel der Kette aus der festen Liste (M10); `null` bei anderen Läden.
+  final String? ketteSchluessel;
 
   /// Kartenposition (WGS84), nur auf ausdrücklichen Wunsch erfasst.
   final double? breite;
@@ -64,12 +74,31 @@ class Filiale {
   String get anzeige => '$kette · $name';
   bool get hatPosition => breite != null && laenge != null;
 
-  Filiale kopie({String? kette, String? name, String? Function()? region, double? Function()? breite, double? Function()? laenge, DateTime? geaendert, String? Function()? raum}) =>
+  /// Vergleichswert der Region: Kreisschlüssel, sonst der freie Text.
+  String? get regionVergleich {
+    if (regionSchluessel != null) return regionSchluessel;
+    final r = region?.trim().toLowerCase();
+    return r == null || r.isEmpty ? null : 'text:$r';
+  }
+
+  Filiale kopie({
+    String? kette,
+    String? name,
+    String? Function()? region,
+    String? Function()? regionSchluessel,
+    String? Function()? ketteSchluessel,
+    double? Function()? breite,
+    double? Function()? laenge,
+    DateTime? geaendert,
+    String? Function()? raum,
+  }) =>
       Filiale(
         id: id,
         kette: kette ?? this.kette,
         name: name ?? this.name,
         region: region != null ? region() : this.region,
+        regionSchluessel: regionSchluessel != null ? regionSchluessel() : this.regionSchluessel,
+        ketteSchluessel: ketteSchluessel != null ? ketteSchluessel() : this.ketteSchluessel,
         breite: breite != null ? breite() : this.breite,
         laenge: laenge != null ? laenge() : this.laenge,
         geaendert: geaendert ?? this.geaendert,
@@ -81,6 +110,8 @@ class Filiale {
         'kette': kette,
         'name': name,
         if (region != null) 'region': region,
+        if (regionSchluessel != null) 'regionSchluessel': regionSchluessel,
+        if (ketteSchluessel != null) 'ketteSchluessel': ketteSchluessel,
         if (breite != null) 'breite': breite,
         if (laenge != null) 'laenge': laenge,
         'geaendert': geaendert.toUtc().toIso8601String(),
@@ -92,6 +123,8 @@ class Filiale {
         kette: j['kette'] as String,
         name: j['name'] as String,
         region: j['region'] as String?,
+        regionSchluessel: j['regionSchluessel'] as String?,
+        ketteSchluessel: j['ketteSchluessel'] as String?,
         breite: (j['breite'] as num?)?.toDouble(),
         laenge: (j['laenge'] as num?)?.toDouble(),
         geaendert: DateTime.parse(j['geaendert'] as String),
@@ -121,6 +154,7 @@ class Preis {
     required this.id,
     required this.artikel,
     this.variante,
+    this.ean,
     required this.filialeId,
     required this.packungsPreisCent,
     required this.packungsMenge,
@@ -136,6 +170,10 @@ class Preis {
   /// Artikelname wie eingegeben (z. B. „Hafermilch“).
   final String artikel;
   final String? variante;
+
+  /// Barcode der Packung (EAN/GTIN, M10); bestimmt das Produkt genauer als
+  /// der Name.
+  final String? ean;
   final String filialeId;
   final int packungsPreisCent;
 
@@ -164,6 +202,7 @@ class Preis {
         id: id,
         artikel: artikel,
         variante: variante,
+        ean: ean,
         filialeId: filialeId,
         packungsPreisCent: packungsPreisCent,
         packungsMenge: packungsMenge,
@@ -178,6 +217,7 @@ class Preis {
         'id': id,
         'artikel': artikel,
         if (variante != null) 'variante': variante,
+        if (ean != null) 'ean': ean,
         'filialeId': filialeId,
         'packungsPreisCent': packungsPreisCent,
         'packungsMenge': packungsMenge,
@@ -192,6 +232,7 @@ class Preis {
         id: j['id'] as String,
         artikel: j['artikel'] as String,
         variante: j['variante'] as String?,
+        ean: j['ean'] as String?,
         filialeId: j['filialeId'] as String,
         packungsPreisCent: j['packungsPreisCent'] as int,
         packungsMenge: (j['packungsMenge'] as num).toDouble(),
@@ -246,6 +287,7 @@ class Posten {
     required this.listeId,
     required this.name,
     this.variante,
+    this.ean,
     this.menge = 1,
     this.einheit = Einheit.stueck,
     this.notiz,
@@ -259,6 +301,9 @@ class Posten {
   final String listeId;
   final String name;
   final String? variante;
+
+  /// Barcode (EAN/GTIN, M10), z. B. gescannt.
+  final String? ean;
   final double menge;
   final Einheit einheit;
   final String? notiz;
@@ -277,6 +322,7 @@ class Posten {
   Posten kopie({
     String? name,
     String? Function()? variante,
+    String? Function()? ean,
     double? menge,
     Einheit? einheit,
     String? Function()? notiz,
@@ -290,6 +336,7 @@ class Posten {
         listeId: listeId,
         name: name ?? this.name,
         variante: variante != null ? variante() : this.variante,
+        ean: ean != null ? ean() : this.ean,
         menge: menge ?? this.menge,
         einheit: einheit ?? this.einheit,
         notiz: notiz != null ? notiz() : this.notiz,
@@ -304,6 +351,7 @@ class Posten {
         'listeId': listeId,
         'name': name,
         if (variante != null) 'variante': variante,
+        if (ean != null) 'ean': ean,
         'menge': menge,
         'einheit': einheit.name,
         if (notiz != null) 'notiz': notiz,
@@ -318,6 +366,7 @@ class Posten {
         listeId: j['listeId'] as String,
         name: j['name'] as String,
         variante: j['variante'] as String?,
+        ean: j['ean'] as String?,
         menge: (j['menge'] as num?)?.toDouble() ?? 1,
         einheit: Einheit.values.byName((j['einheit'] as String?) ?? 'stueck'),
         notiz: j['notiz'] as String?,

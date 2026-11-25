@@ -26,7 +26,9 @@ void main() {
     final kay = await person('Kay');
     final lena = await person('Lena');
     final heute = DateTime.now();
-    final f = Filiale(id: 'f1', kette: 'Aldi Süd', name: 'Hauptstraße', region: 'Musterstadt', breite: 52.52, laenge: 13.40, geaendert: t0);
+    final f = Filiale(
+        id: 'f1', kette: 'Aldi Süd', ketteSchluessel: 'aldi-sued', name: 'Hauptstraße', region: 'Nordwestmecklenburg', regionSchluessel: '13074',
+        breite: 52.52, laenge: 13.40, geaendert: t0);
     await kay.s.speichereFiliale(f);
     final p = Preis(
       id: 'p1', artikel: 'Butter', filialeId: 'f1', packungsPreisCent: 229, packungsMenge: 250, packungsEinheit: Einheit.g,
@@ -39,8 +41,14 @@ void main() {
     expect(server.speicher.db.select('SELECT count(*) n FROM katalog').first['n'], 0);
     // Was veröffentlicht würde: keine Position, kein Name.
     final b = kat.KatalogDienst.beitragFuer(p, f);
-    expect(b.keys.toSet(), {'typ', 'artikel', 'packungsMenge', 'packungsEinheit', 'kette', 'filiale', 'region', 'preisCent', 'waehrung', 'tag'});
+    expect(b.keys.toSet(), {'typ', 'artikel', 'packungsMenge', 'packungsEinheit', 'kette', 'ketteSchluessel', 'filiale', 'region', 'regionSchluessel', 'preisCent', 'waehrung', 'tag'});
     expect(() => kat.KatalogDienst.beitragFuer(p, f.kopie(region: () => null)), throwsA(isA<kat.KatalogFehler>()));
+    // M10: freie Region oder Kette außerhalb der Liste wird nicht veröffentlicht.
+    expect(() => kat.KatalogDienst.beitragFuer(p, f.kopie(regionSchluessel: () => null)), throwsA(isA<kat.KatalogFehler>()));
+    expect(() => kat.KatalogDienst.beitragFuer(p, f.kopie(ketteSchluessel: () => null)), throwsA(isA<kat.KatalogFehler>()));
+    expect(kat.KatalogDienst.beitragFuer(Preis(
+        id: 'p2', artikel: 'Butter', ean: '4006381333931', filialeId: 'f1', packungsPreisCent: 229, packungsMenge: 250, packungsEinheit: Einheit.g,
+        datum: t0, geaendert: t0), f)['ean'], '4006381333931');
 
     await kay.s.speichereEinstellungen(kay.b.einstellungen.kopie(katalogBeitragen: true));
     await k.veroeffentlichen(p, f);
@@ -69,7 +77,7 @@ void main() {
     final uebernommen = await kl.uebernehmen(treffer.single);
     expect(uebernommen.quelle, 'katalog');
     final lf = lena.b.filialen[uebernommen.filialeId]!;
-    expect('${lf.kette}|${lf.name}|${lf.region}', 'Aldi Süd|Hauptstraße|Musterstadt');
+    expect('${lf.kette}|${lf.name}|${lf.region}|${lf.regionSchluessel}|${lf.ketteSchluessel}', 'Aldi Süd|Hauptstraße|Nordwestmecklenburg|13074|aldi-sued');
     expect(lf.hatPosition, isFalse);
     final s = ListenSchaetzung(
         [Posten(id: 'x', listeId: 'l', name: 'Butter', menge: 1, einheit: Einheit.packung, geaendert: t0)], lena.b.preise.values, lena.b.filialen, lf.id);

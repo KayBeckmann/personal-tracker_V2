@@ -23,9 +23,12 @@ class KatalogPreis {
   String get id => j['id'] as String;
   String get artikel => j['artikel'] as String;
   String? get variante => j['variante'] as String?;
+  String? get ean => j['ean'] as String?;
   String get kette => j['kette'] as String;
+  String? get ketteSchluessel => j['ketteSchluessel'] as String?;
   String get filiale => j['filiale'] as String;
   String get region => j['region'] as String;
+  String? get regionSchluessel => j['regionSchluessel'] as String?;
   int get preisCent => j['preisCent'] as int;
   double get packungsMenge => (j['packungsMenge'] as num).toDouble();
   Einheit get einheit => Einheit.values.byName(j['packungsEinheit'] as String);
@@ -36,8 +39,12 @@ class KatalogPreis {
   bool get vonMir => j['vonMir'] == true;
   bool get veraltet => j['veraltet'] == true;
 
-  /// Passt zu einer eigenen Filiale (Kette, Name und Region gleich)?
-  bool passtZu(Filiale f) => _n(f.kette) == _n(kette) && _n(f.name) == _n(filiale) && _n(f.region ?? '') == _n(region);
+  /// Passt zu einer eigenen Filiale (Kette, Name und Region gleich)? Kette
+  /// und Region werden über ihre Schlüssel verglichen, sofern bekannt.
+  bool passtZu(Filiale f) =>
+      (ketteSchluessel != null && f.ketteSchluessel != null ? ketteSchluessel == f.ketteSchluessel : _n(f.kette) == _n(kette)) &&
+      _n(f.name) == _n(filiale) &&
+      (regionSchluessel != null && f.regionSchluessel != null ? regionSchluessel == f.regionSchluessel : _n(f.region ?? '') == _n(region));
   static String _n(String s) => s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 }
 
@@ -54,22 +61,29 @@ class KatalogDienst {
     return api;
   }
 
-  /// Genau das, was öffentlich würde.
+  /// Genau das, was öffentlich würde. Region und Kette müssen aus den
+  /// festen Listen stammen (M10), damit andere sie eindeutig zuordnen.
   static Map<String, dynamic> beitragFuer(Preis p, Filiale f) {
     final region = f.region?.trim();
-    if (region == null || region.isEmpty) {
-      throw KatalogFehler('Für den Katalog braucht die Filiale eine Region (z. B. den Ort), damit andere sie zuordnen können.');
+    if (f.regionSchluessel == null || region == null || region.isEmpty) {
+      throw KatalogFehler('Für den Katalog braucht die Filiale eine Region aus der Liste (Landkreis oder kreisfreie Stadt). Bitte die Filiale bearbeiten.');
+    }
+    if (f.ketteSchluessel == null) {
+      throw KatalogFehler('Für den Katalog muss die Kette aus der Liste stammen. Andere Läden bleiben privat.');
     }
     if (p.packungsEinheit == Einheit.packung) throw KatalogFehler('Für den Katalog bitte eine Packungsgröße in Stück, g, kg, ml oder l angeben.');
     return {
       'typ': 'preis',
       'artikel': p.artikel,
       'variante': ?p.variante,
+      'ean': ?p.ean,
       'packungsMenge': p.packungsMenge == p.packungsMenge.roundToDouble() ? p.packungsMenge.toInt() : p.packungsMenge,
       'packungsEinheit': p.packungsEinheit.name,
       'kette': f.kette,
+      'ketteSchluessel': f.ketteSchluessel,
       'filiale': f.name,
       'region': region,
+      'regionSchluessel': f.regionSchluessel,
       'preisCent': p.packungsPreisCent,
       'waehrung': 'EUR',
       'tag': '${p.datum.year.toString().padLeft(4, '0')}-${p.datum.month.toString().padLeft(2, '0')}-${p.datum.day.toString().padLeft(2, '0')}',
@@ -95,9 +109,16 @@ class KatalogDienst {
     await (await _api()).katalogBeitrag({'typ': 'rueckzug', 'ziel': {'instanz': instanz, 'id': id}});
   }
 
-  Future<List<KatalogPreis>> suchen(String artikel, {Filiale? filiale}) async {
+  /// Preise zu [artikel] oder [ean]; mit [filiale] nur aus deren Kette und
+  /// Region (über die Schlüssel, sonst den Text).
+  Future<List<KatalogPreis>> suchen(String artikel, {String? ean, Filiale? filiale}) async {
     if (!ref.read(bestandProvider).einstellungen.katalogLesen) throw KatalogFehler('Lesen aus dem Katalog ist ausgeschaltet.');
-    final r = await (await _api()).katalogPreise(artikel: artikel, kette: filiale?.kette, region: filiale?.region);
+    final r = await (await _api()).katalogPreise(
+      artikel: artikel,
+      ean: ean,
+      kette: filiale == null ? null : filiale.ketteSchluessel ?? filiale.kette,
+      region: filiale == null ? null : filiale.regionSchluessel ?? filiale.region,
+    );
     return [for (final j in r) KatalogPreis(j)];
   }
 
@@ -112,13 +133,23 @@ class KatalogDienst {
     final b = ref.read(bestandProvider);
     var f = b.filialen.values.where((x) => x.raum == raum && k.passtZu(x)).firstOrNull;
     if (f == null) {
-      f = Filiale(id: s.neueId(), kette: k.kette, name: k.filiale, region: k.region, geaendert: DateTime.now().toUtc(), raum: raum);
+      f = Filiale(
+        id: s.neueId(),
+        kette: k.kette,
+        ketteSchluessel: k.ketteSchluessel,
+        name: k.filiale,
+        region: k.region,
+        regionSchluessel: k.regionSchluessel,
+        geaendert: DateTime.now().toUtc(),
+        raum: raum,
+      );
       await s.speichereFiliale(f);
     }
     final p = Preis(
       id: s.neueId(),
       artikel: k.artikel,
       variante: k.variante,
+      ean: k.ean,
       filialeId: f.id,
       packungsPreisCent: k.preisCent,
       packungsMenge: k.packungsMenge,

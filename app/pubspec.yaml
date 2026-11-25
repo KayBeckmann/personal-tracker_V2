@@ -80,6 +80,11 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # M10: feste Regionen und Ketten (Kopien aus protokoll/, siehe protokoll/REGIONEN.md).
+  assets:
+    - assets/regionen-de.json
+    - assets/ketten-de.json
+
   # Mitgeliefert, damit Web und Android offline dieselbe Schrift haben und
   # nichts von einem Schrift-CDN nachgeladen wird (Lizenz: assets/fonts/OFL.txt).
   fonts:

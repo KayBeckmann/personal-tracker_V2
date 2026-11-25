@@ -5,7 +5,7 @@ import { base64, entschluesseln, hex, hkdf, hmac, sha256, utf8, verschluesseln, 
 
 export const VAULT_BEREICH = 'vault';
 /** Schemaversion der App (Umschlag `s`); muss zu `protokoll/testvektoren.json` passen. */
-export const SCHEMA = 7;
+export const SCHEMA = 8;
 export const INLINE_GRENZE = 64 * 1024;
 export const BLOCK_GROESSE = 1024 * 1024;
 const BLOCK_RASTER = 4096;

@@ -9,7 +9,8 @@
 /// - 5: M5 (geteilte Räume; Termine und Aufgaben mit optionalem Raum)
 /// - 6: M6 (Einkaufslisten, Posten, Filialen, Preise, Einkäufe)
 /// - 7: M8 (KI-Agenten: Zugänge, Protokoll, Vorschläge)
-const aktuellesSchema = 7;
+/// - 8: M10 (EAN an Posten und Preisen, Regions- und Kettenschlüssel an Filialen)
+const aktuellesSchema = 8;
 
 /// Rohdaten: Bereich → Datensätze (Klartext-JSON).
 typedef Rohdaten = Map<String, List<Map<String, dynamic>>>;
@@ -17,7 +18,7 @@ typedef Rohdaten = Map<String, List<Map<String, dynamic>>>;
 /// Migration von Version `n` auf `n + 1`.
 typedef Migration = Rohdaten Function(Rohdaten daten);
 
-const Map<int, Migration> migrationen = {1: _v1zuV2, 2: _v2zuV3, 3: _v3zuV4, 4: _v4zuV5, 5: _v5zuV6, 6: _v6zuV7};
+const Map<int, Migration> migrationen = {1: _v1zuV2, 2: _v2zuV3, 3: _v3zuV4, 4: _v4zuV5, 5: _v5zuV6, 6: _v6zuV7, 7: _v7zuV8};
 
 /// Schema 2 ergänzt nur den Bereich „aufgaben“; vorhandene Datensätze
 /// bleiben unverändert. Die Versionsnummer steigt trotzdem, damit eine
@@ -48,6 +49,12 @@ Rohdaten _v6zuV7(Rohdaten d) => {
       ...d,
       for (final b in ['agenten', 'agent_protokoll', 'agent_vorschlaege']) b: d[b] ?? [],
     };
+
+/// Schema 8 ergänzt nur optionale Felder (EAN, Regions- und
+/// Kettenschlüssel). Vorhandene Datensätze bleiben unverändert; eine
+/// ältere App soll sie nicht beim Speichern stillschweigend verlieren.
+/// Freie Regionen ordnet die App beim Bearbeiten der Filiale zu.
+Rohdaten _v7zuV8(Rohdaten d) => d;
 
 class SchemaFehler implements Exception {
   SchemaFehler(this.meldung);
