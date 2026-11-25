@@ -461,4 +461,41 @@ void main() {
       expect(s.db.select('SELECT count(*) n FROM raum_bloecke').first['n'], 0);
     });
   });
+
+  test('Agenten-Gerät: Lesen und Schreiben ja, Verwaltung nein; Ablauf gilt serverseitig', () async {
+    final (a, _) = await konto();
+    final slot = hex(64);
+    expect((await a.anfrage('POST', '/v1/kopplungen', {'slot': slot, 'paket': 'P', 'gueltigSekunden': 600, 'art': 'agent', 'geraetAblaufTage': 30})).$1, 201);
+    final agent = Client(h);
+    final (st, j) = await agent.anfrage('POST', '/v1/kopplungen/$slot/einloesen', {'geraetName': 'agent'});
+    expect(st, 200);
+    agent.token = j['token'] as String;
+    final ich = j['geraet'] as String;
+    // Objekte lesen und schreiben geht.
+    expect((await agent.anfrage('GET', '/v1/objekte?seit=0')).$1, 200);
+    expect((await agent.anfrage('POST', '/v1/objekte', {
+      'aenderungen': [
+        {'id': hex(32), 'basis': 0, 'aenderung': 'x', 'daten': 'D'},
+      ],
+    }))
+        .$1, 200);
+    // Verwaltung nicht.
+    expect((await agent.anfrage('POST', '/v1/kopplungen', {'slot': hex(64), 'paket': 'P', 'gueltigSekunden': 60})).$1, 403);
+    expect((await agent.anfrage('PUT', '/v1/konto/recovery', {'recoveryAuth': geheim(), 'recoveryHuelle': 'h', 'schluesselPaket': 'p'})).$1, 403);
+    expect((await agent.anfrage('DELETE', '/v1/konto')).$1, 403);
+    expect((await agent.anfrage('POST', '/v1/raeume', {'id': hex(32)})).$1, 403);
+    expect((await agent.anfrage('POST', '/v1/katalog/beitraege', {'typ': 'preis'})).$1, 403);
+    final (_, info) = await a.anfrage('GET', '/v1/konto');
+    final eigenes = ((info['geraete'] as List).firstWhere((g) => g['art'] == 'geraet') as Map)['id'] as String;
+    expect((await agent.anfrage('DELETE', '/v1/geraete/$eigenes')).$1, 403);
+    final ag = (info['geraete'] as List).firstWhere((g) => g['art'] == 'agent') as Map;
+    expect(ag['ablauf'], isNotNull);
+    // Abgelaufen: abgelehnt.
+    s.db.execute('UPDATE geraete SET ablauf = 1 WHERE id = ?', [ich]);
+    expect((await agent.anfrage('GET', '/v1/objekte')).$1, 401);
+    s.db.execute('UPDATE geraete SET ablauf = NULL WHERE id = ?', [ich]);
+    // Abmelden darf er sich selbst.
+    expect((await agent.anfrage('DELETE', '/v1/geraete/$ich')).$1, 200);
+    expect((await agent.anfrage('GET', '/v1/objekte')).$1, 401);
+  });
 }
