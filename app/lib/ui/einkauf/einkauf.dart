@@ -1096,7 +1096,7 @@ class KatalogKarte extends ConsumerWidget {
         children: [
           const Text(
             'Freiwillig und getrennt von deinem verschlüsselten Sync: Teilnehmende Server teilen Preise. Ein neuer Preis gilt erst als bestätigt, '
-            'wenn eine zweite Person ihn bestätigt. Was du veröffentlichst, ist öffentlich lesbar (Artikel, Packung, Kette, Filiale, Region, Preis, Tag) – '
+            'wenn eine zweite Person ihn bestätigt. Was du veröffentlichst, ist öffentlich lesbar (Artikel mit Barcode, Packung, Kette, Filiale, Region, Preis, Tag) – '
             'nie Position, Listen, Einkäufe oder dein Name.',
             style: TextStyle(fontSize: 13),
           ),
